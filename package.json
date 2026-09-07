@@ -1,6 +1,6 @@
 {
   "name": "flag-pinpoint-duel",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "1v1 multiplayer flag guessing game with a world map, Socket.IO and Render deployment.",
   "main": "server.js",
@@ -10,7 +10,7 @@
     "test": "node --test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22 <23"
   },
   "dependencies": {
     "express": "^5.1.0",

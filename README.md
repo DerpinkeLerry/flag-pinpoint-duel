@@ -12,7 +12,7 @@ Ein komplettes 1-gegen-1-Flaggen-Spiel für den Browser. Ein Spieler erstellt ei
 - Distanzberechnung ausschließlich auf dem Server (Haversine)
 - Rundensieger ist der Spieler mit der kleineren Distanz zur Hauptstadt des Landes
 - Hauptstadt-Zielpunkte mit festen Stadtkoordinaten statt ungefährem Ländermittelpunkt
-- Leichterer Flaggen-Pool: sehr kleine/obskure Staaten werden weitgehend ausgefiltert
+- Stabiler kuratierter Flaggen-Pool mit 150+ eher spielbaren Ländern; unabhängig von optionalen `world-countries`-Feldern
 - 9 Sekunden Reveal-Zeit mit sichtbaren Spieler-Pins, Hauptstadt-Ziel und Verbindungslinien
 - Live-Score und Ergebnisbox in der Kartenecke statt ueber den Pins
 - Rematch ohne neue Lobby
@@ -24,7 +24,7 @@ Ein komplettes 1-gegen-1-Flaggen-Spiel für den Browser. Ein Spieler erstellt ei
 
 ## Lokal starten
 
-Voraussetzung: Node.js 20 oder neuer.
+Voraussetzung: Node.js 22.x.
 
 ```bash
 npm install
@@ -75,8 +75,11 @@ flag-guessing-game/
 │   └── styles.css      # Responsive Design
 ├── src/
 │   ├── capitals.js     # Hauptstadt-Koordinaten für die Spielziele
+│   ├── countryPool.js  # Stabiler kuratierter ISO-Länderpool
 │   └── gameServer.js   # Express, Socket.IO, Lobbys, Runden, Scoring
 ├── tests/
+│   ├── capitals.test.js
+│   ├── countryPool.test.js
 │   └── smoke.test.js   # Multiplayer-Smoke-Test
 ├── render.yaml
 ├── server.js
@@ -94,3 +97,7 @@ Die Lobby-Daten liegen absichtlich im Arbeitsspeicher des Node-Prozesses. Für e
 - SVG-Flaggen: `flag-icons`
 
 Die Flaggen werden vom eigenen Server über zufällige Tokens ausgeliefert. Dadurch steht der Ländercode nicht direkt in der Flag-URL des Clients.
+
+## Hotfix 1.1.1
+
+`world-countries@5.1.0` stellt kein `population`-Feld bereit. In Version 1.1.0 wurde ein fehlender Wert dadurch als `0` behandelt und der Flaggen-Pool fiel auf nur acht Sonderfälle zusammen. Version 1.1.1 verwendet stattdessen eine feste kuratierte ISO-Liste und fällt bei unerwarteten Paketänderungen auf alle Länder mit vollständigen Hauptstadt- und Flag-Daten zurück, statt den Render-Prozess beim Start abzubrechen.

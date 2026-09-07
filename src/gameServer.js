@@ -8,14 +8,13 @@ const express = require('express');
 const { Server } = require('socket.io');
 const countries = require('world-countries');
 const { CAPITAL_COORDINATES } = require('./capitals');
+const { CURATED_COUNTRY_CODE_SET } = require('./countryPool');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const LEAFLET_DIR = path.dirname(require.resolve('leaflet/package.json'));
 const FLAG_ICONS_DIR = path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '4x3');
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_LENGTH = 6;
-const MIN_STANDARD_POPULATION = 2000000;
-const FEATURED_SMALL_COUNTRY_CODES = new Set(['CY', 'EE', 'IS', 'LV', 'LU', 'MT', 'ME', 'MK']);
 
 function createGameServer(options = {}) {
   const config = {
@@ -38,18 +37,17 @@ function createGameServer(options = {}) {
   const players = new Map();
   const flagTokens = new Map();
 
-  const playableCountries = countries
+  const countriesWithGameData = countries
     .filter((country) => country.independent === true)
     .filter((country) => Array.isArray(country.capital) && country.capital.length > 0)
     .filter((country) => /^[A-Z]{2}$/.test(country.cca2 || ''))
     .filter((country) => Array.isArray(CAPITAL_COORDINATES[country.cca2]))
-    .filter((country) => Number(country.population || 0) >= MIN_STANDARD_POPULATION
-      || FEATURED_SMALL_COUNTRY_CODES.has(country.cca2))
     .filter((country) => fs.existsSync(path.join(FLAG_ICONS_DIR, `${country.cca2.toLowerCase()}.svg`)))
     .map((country) => {
       const [lat, lng] = CAPITAL_COORDINATES[country.cca2];
       return {
         code: country.cca2.toLowerCase(),
+        isoCode: country.cca2,
         name: country.translations?.deu?.common || country.name.common,
         capital: country.capital[0],
         lat,
@@ -57,9 +55,30 @@ function createGameServer(options = {}) {
       };
     });
 
-  if (playableCountries.length < 100) {
-    throw new Error(`Only ${playableCountries.length} playable countries were found; flag/capital data seems incomplete.`);
+  const curatedCountries = countriesWithGameData
+    .filter((country) => CURATED_COUNTRY_CODE_SET.has(country.isoCode));
+
+  // Prefer the stable curated pool. If an upstream metadata package ever
+  // changes enough that the curated list can no longer be resolved, keep the
+  // service online with all countries that still have capital + flag data.
+  const playableCountries = curatedCountries.length >= 100
+    ? curatedCountries
+    : countriesWithGameData;
+
+  if (curatedCountries.length < 100) {
+    console.warn(
+      `[flag-pinpoint] Curated pool resolved to only ${curatedCountries.length} countries; `
+      + `falling back to ${countriesWithGameData.length} countries with complete game data.`,
+    );
   }
+
+  if (playableCountries.length < 20) {
+    throw new Error(
+      `Only ${playableCountries.length} countries with complete flag/capital data were found.`,
+    );
+  }
+
+  console.log(`[flag-pinpoint] Loaded ${playableCountries.length} playable countries.`);
 
   app.disable('x-powered-by');
   app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
