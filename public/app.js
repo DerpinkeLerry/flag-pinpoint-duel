@@ -119,7 +119,7 @@ function syncGameSurface() {
     ensureGlobe().then((globe) => {
       globe.resize();
       if (state.currentScreen === 'game' && !state.pendingGuess && state.roundDeadline) {
-        els.mapHint.textContent = 'Globus drehen · auf die Hauptstadt tippen';
+        els.mapHint.textContent = 'Drehen & zoomen · Fadenkreuz = exakter Tipp';
       }
     }).catch(() => {
       els.globeStatus.textContent = '3D-Globus konnte nicht geladen werden.';
@@ -321,7 +321,7 @@ function clearPlaySurfaceRound() {
   els.submitGuessButton.disabled = true;
   els.guessState.textContent = 'Ziel: Hauptstadt';
   els.mapHint.textContent = currentGameMode() === 'globe'
-    ? 'Globus drehen · auf die Hauptstadt tippen'
+    ? 'Drehen & zoomen · Fadenkreuz = exakter Tipp'
     : 'Tippe auf die Hauptstadt des Landes';
 
   if (currentGameMode() === 'globe') state.globeController?.resetView();

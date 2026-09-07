@@ -2,10 +2,31 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const EARTH_TEXTURES = [
-  'https://threejs.org/examples/textures/planets/earth_day_4096.jpg',
-  'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',
-  'https://svs.gsfc.nasa.gov/vis/a000000/a002900/a002915/bluemarble-2048.png',
+  {
+    url: 'https://upload.wikimedia.org/wikipedia/commons/4/4d/Whole_world_-_land_and_oceans.jpg',
+    minTextureSize: 8192,
+    timeoutMs: 14000,
+    label: '8K NASA Blue Marble',
+  },
+  {
+    url: 'https://threejs.org/examples/textures/planets/earth_day_4096.jpg',
+    minTextureSize: 4096,
+    timeoutMs: 8000,
+    label: '4K Earth',
+  },
+  {
+    url: 'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',
+    minTextureSize: 2048,
+    timeoutMs: 6000,
+    label: '2K Earth',
+  },
 ];
+
+const EARTH_RADIUS = 1;
+const SURFACE_EPSILON = 0.0022;
+const DEFAULT_CAMERA_DISTANCE = 2.65;
+const MIN_CAMERA_DISTANCE = 1.085;
+const MAX_CAMERA_DISTANCE = 4.2;
 
 const COLORS = {
   self: 0x34d399,
@@ -56,17 +77,26 @@ function disposeObject(object) {
 async function loadFirstTexture(renderer) {
   const loader = new THREE.TextureLoader();
   loader.setCrossOrigin('anonymous');
-  for (const url of EARTH_TEXTURES) {
+  const maxTextureSize = renderer.capabilities.maxTextureSize || 4096;
+  const candidates = EARTH_TEXTURES.filter((candidate) => candidate.minTextureSize <= maxTextureSize);
+  const fallbackCandidates = candidates.length ? candidates : [EARTH_TEXTURES[EARTH_TEXTURES.length - 1]];
+
+  for (const candidate of fallbackCandidates) {
     try {
       const texture = await Promise.race([
-        loader.loadAsync(url),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('texture timeout')), 3500)),
+        loader.loadAsync(candidate.url),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('texture timeout')), candidate.timeoutMs)),
       ]);
       texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = true;
+      texture.needsUpdate = true;
+      texture.userData.sourceLabel = candidate.label;
       return texture;
     } catch {
-      // Try the next mirror. The globe still works with a fallback material.
+      // Try the next resolution. The globe still works with a fallback material.
     }
   }
   return null;
@@ -89,6 +119,9 @@ export class GlobeController {
     this.pointer = new THREE.Vector2();
     this.pointerStart = null;
     this.pointerMoved = false;
+    this.selectionSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), EARTH_RADIUS);
+    this.hitPoint = new THREE.Vector3();
+    this.markerWorldPosition = new THREE.Vector3();
     this.resizeObserver = null;
     this.animationFrame = null;
     this.destroyed = false;
@@ -103,11 +136,11 @@ export class GlobeController {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x01040a);
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 100);
-    this.camera.position.copy(latLngToVector3(18, -18, 2.65));
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.004, 100);
+    this.camera.position.copy(latLngToVector3(18, -18, DEFAULT_CAMERA_DISTANCE));
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
@@ -118,8 +151,8 @@ export class GlobeController {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.065;
     this.controls.enablePan = false;
-    this.controls.minDistance = 1.5;
-    this.controls.maxDistance = 4.2;
+    this.controls.minDistance = MIN_CAMERA_DISTANCE;
+    this.controls.maxDistance = MAX_CAMERA_DISTANCE;
     this.controls.rotateSpeed = 0.46;
     this.controls.zoomSpeed = 0.85;
     this.controls.target.set(0, 0, 0);
@@ -134,11 +167,11 @@ export class GlobeController {
 
     this.addStars();
 
-    const earthGeometry = new THREE.SphereGeometry(1, 96, 64);
+    const earthGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 256, 160);
     const earthMaterial = new THREE.MeshPhongMaterial({
       color: 0x164e63,
-      shininess: 10,
-      specular: new THREE.Color(0x29485c),
+      shininess: 7,
+      specular: new THREE.Color(0x1b3445),
     });
     this.earth = new THREE.Mesh(earthGeometry, earthMaterial);
     this.scene.add(this.earth);
@@ -169,7 +202,8 @@ export class GlobeController {
         earthMaterial.map = texture;
         earthMaterial.color.setHex(0xffffff);
         earthMaterial.needsUpdate = true;
-        this.setStatus('');
+        this.setStatus(texture.userData.sourceLabel ? `${texture.userData.sourceLabel} geladen` : '');
+        setTimeout(() => this.setStatus(''), 900);
       } else {
         this.setStatus('Erdtextur konnte nicht geladen werden – 3D-Auswahl bleibt aktiv.');
         setTimeout(() => this.setStatus(''), 3500);
@@ -261,10 +295,13 @@ export class GlobeController {
       this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       this.raycaster.setFromCamera(this.pointer, this.camera);
-      const hit = this.raycaster.intersectObject(this.earth, false)[0];
+
+      // Intersect the mathematical sphere directly instead of the rendered triangle mesh.
+      // This makes the selected latitude/longitude independent of mesh tessellation and exact
+      // down to floating-point precision.
+      const hit = this.raycaster.ray.intersectSphere(this.selectionSphere, this.hitPoint);
       if (!hit) return;
-      const localPoint = this.earth.worldToLocal(hit.point.clone());
-      this.onSelect(vector3ToLatLng(localPoint));
+      this.onSelect(vector3ToLatLng(hit));
     });
   }
 
@@ -272,8 +309,14 @@ export class GlobeController {
     if (!this.renderer || !this.camera) return;
     const width = Math.max(1, this.container.clientWidth || 800);
     const height = Math.max(1, this.container.clientHeight || 600);
+    const deviceRatio = window.devicePixelRatio || 1;
+    const pixelBudget = 6_000_000;
+    const budgetRatio = Math.sqrt(pixelBudget / Math.max(1, width * height));
+    const pixelRatio = Math.max(1, Math.min(deviceRatio, 2.75, budgetRatio));
+
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(width, height, false);
   }
 
@@ -281,6 +324,7 @@ export class GlobeController {
     const render = () => {
       if (this.destroyed) return;
       this.controls?.update();
+      this.updateMarkerScales();
       if (this.container.offsetParent !== null && this.container.clientWidth > 0 && this.container.clientHeight > 0) {
         this.renderer.render(this.scene, this.camera);
       }
@@ -289,24 +333,74 @@ export class GlobeController {
     render();
   }
 
-  makeMarker(lat, lng, color, size = 0.035) {
+  updateMarkerScales() {
+    if (!this.markerGroup || !this.camera || !this.renderer) return;
+    const canvasHeight = Math.max(1, this.renderer.domElement.clientHeight || this.container.clientHeight || 600);
+    const halfFov = THREE.MathUtils.degToRad(this.camera.fov * 0.5);
+    const perspectiveFactor = 2 * Math.tan(halfFov) / canvasHeight;
+
+    this.markerGroup.traverse((object) => {
+      if (!object.userData?.isPrecisionMarker) return;
+      object.getWorldPosition(this.markerWorldPosition);
+      const distance = Math.max(0.01, this.camera.position.distanceTo(this.markerWorldPosition));
+      const worldRadius = distance * perspectiveFactor * object.userData.screenRadiusPx;
+      object.scale.set(worldRadius, worldRadius, 1);
+    });
+  }
+
+  makeMarker(lat, lng, color, screenRadiusPx = 5.5, { target = false } = {}) {
     const group = new THREE.Group();
-    const direction = latLngToVector3(lat, lng, 1).normalize();
+    const safeLat = clamp(Number(lat) || 0, -90, 90);
+    const safeLng = normalizeLng(Number(lng) || 0);
+    const direction = latLngToVector3(safeLat, safeLng, EARTH_RADIUS).normalize();
+    const orientation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
 
-    const dot = new THREE.Mesh(
-      new THREE.SphereGeometry(size, 18, 14),
-      new THREE.MeshBasicMaterial({ color, depthTest: true }),
-    );
-    dot.position.copy(direction.clone().multiplyScalar(1.035));
-    group.add(dot);
+    group.position.copy(direction.clone().multiplyScalar(EARTH_RADIUS + SURFACE_EPSILON));
+    group.quaternion.copy(orientation);
+    group.userData.isPrecisionMarker = true;
+    group.userData.screenRadiusPx = screenRadiusPx;
+    group.userData.lat = safeLat;
+    group.userData.lng = safeLng;
 
-    const halo = new THREE.Mesh(
-      new THREE.RingGeometry(size * 1.25, size * 1.72, 32),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }),
+    // Geometry is normalized to a one-unit radius. updateMarkerScales() converts that to a
+    // constant on-screen size, so markers stay precise instead of becoming huge while zooming.
+    const center = new THREE.Mesh(
+      new THREE.CircleGeometry(target ? 0.22 : 0.18, 24),
+      new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: true, depthWrite: false }),
     );
-    halo.position.copy(direction.clone().multiplyScalar(1.04));
-    halo.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
-    group.add(halo);
+    center.position.z = 0.00035;
+    group.add(center);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(target ? 0.63 : 0.7, 1, 64),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: target ? 0.96 : 0.86,
+        side: THREE.DoubleSide,
+        depthTest: true,
+        depthWrite: false,
+      }),
+    );
+    ring.position.z = 0.0006;
+    group.add(ring);
+
+    const crossLength = 0.58;
+    const gap = 0.28;
+    const crossGeometry = new THREE.BufferGeometry();
+    crossGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      -crossLength, 0, 0, -gap, 0, 0,
+      gap, 0, 0, crossLength, 0, 0,
+      0, -crossLength, 0, 0, -gap, 0,
+      0, gap, 0, 0, crossLength, 0,
+    ], 3));
+    const cross = new THREE.LineSegments(
+      crossGeometry,
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.92, depthTest: true, depthWrite: false }),
+    );
+    cross.position.z = 0.0009;
+    group.add(cross);
+
     return group;
   }
 
@@ -326,15 +420,14 @@ export class GlobeController {
   setGuessMarker(lat, lng, submitted = false) {
     if (!this.guessMarkerGroup) return;
     this.clearGuessMarker();
-    this.guessMarkerGroup.add(this.makeMarker(lat, lng, submitted ? COLORS.submitted : COLORS.pending, 0.036));
+    this.guessMarkerGroup.add(this.makeMarker(lat, lng, submitted ? COLORS.submitted : COLORS.pending, 5.25));
   }
 
   setGuessSubmitted() {
     if (!this.guessMarkerGroup?.children.length) return;
     const current = this.guessMarkerGroup.children[0];
-    const position = current.children?.[0]?.position?.clone();
-    if (!position) return;
-    const { lat, lng } = vector3ToLatLng(position);
+    const { lat, lng } = current.userData || {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     this.setGuessMarker(lat, lng, true);
   }
 
@@ -345,7 +438,7 @@ export class GlobeController {
 
   resetView() {
     if (!this.camera || !this.controls) return;
-    this.camera.position.copy(latLngToVector3(18, -18, 2.65));
+    this.camera.position.copy(latLngToVector3(18, -18, DEFAULT_CAMERA_DISTANCE));
     this.controls.target.set(0, 0, 0);
     this.controls.update();
   }
@@ -383,7 +476,7 @@ export class GlobeController {
   focusLatLng(lat, lng) {
     if (!this.camera || !this.controls) return;
     const direction = latLngToVector3(lat, lng, 1).normalize();
-    this.camera.position.copy(direction.multiplyScalar(2.45));
+    this.camera.position.copy(direction.multiplyScalar(1.95));
     this.controls.target.set(0, 0, 0);
     this.controls.update();
   }
@@ -394,12 +487,12 @@ export class GlobeController {
     const target = payload?.target;
     if (!target || !Number.isFinite(target.lat) || !Number.isFinite(target.lng)) return;
 
-    this.resultGroup.add(this.makeMarker(target.lat, target.lng, COLORS.target, 0.045));
+    this.resultGroup.add(this.makeMarker(target.lat, target.lng, COLORS.target, 6.5, { target: true }));
     for (const guess of payload.guesses || []) {
       if (!Number.isFinite(guess.lat) || !Number.isFinite(guess.lng)) continue;
       const isSelf = guess.playerId === selfId;
       const color = isSelf ? COLORS.self : COLORS.opponent;
-      this.resultGroup.add(this.makeMarker(guess.lat, guess.lng, color, 0.035));
+      this.resultGroup.add(this.makeMarker(guess.lat, guess.lng, color, 5));
       this.addArc(guess.lat, guess.lng, target.lat, target.lng, color);
     }
     this.focusLatLng(target.lat, target.lng);
