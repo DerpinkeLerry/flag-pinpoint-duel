@@ -4,230 +4,152 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0f18" />
-  <meta name="description" content="Flag Pinpoint – Flaggen im Solo- oder 1v1-Modus auf 2D-Karte oder 3D-Globus pinpointen." />
-  <title>Flag Pinpoint</title>
+  <meta name="description" content="Flag Pinpoint – Solo, Ranked, Daily, Duels und Battle Royale auf 2D-Karte oder präzisem 3D-Globus." />
+  <title>Flag Pinpoint V2</title>
   <link rel="stylesheet" href="/vendor/leaflet/dist/leaflet.css" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <main id="app">
     <section id="homeScreen" class="screen home-screen">
-      <div class="ambient ambient-a"></div>
-      <div class="ambient ambient-b"></div>
-      <div class="home-card glass">
+      <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+      <div class="home-card glass home-card-v2">
         <div class="brand-lockup">
           <div class="brand-mark" aria-hidden="true">◎</div>
-          <div>
-            <p class="eyebrow">SOLO · 1 VS 1 · LIVE</p>
-            <h1>FLAG <span>PINPOINT</span></h1>
-          </div>
+          <div><p class="eyebrow">SOLO · RANKED · DAILY · BATTLE ROYALE</p><h1>FLAG <span>PINPOINT</span></h1></div>
         </div>
-        <p class="hero-copy">Erkenne die Flagge und pinne die Hauptstadt so präzise wie möglich. Spiele allein oder im 1-vs-1 – mit frei wählbarer Region, Rundenzeit, Startpunktzahl und Punkte-Multiplikator.</p>
+        <p class="hero-copy">Erkenne die Flagge und pinne die Hauptstadt. Spiele klassisch, im Precision-/Blind-/Hardcore-Setup, Ranked, Daily oder mit bis zu 8 Spielern.</p>
+
+        <section class="profile-strip" aria-label="Spielerprofil">
+          <div><span class="hud-label">PROFIL</span><strong id="profileName">Spieler</strong></div>
+          <div><span class="hud-label">RATING</span><strong id="profileRating">1000</strong></div>
+          <div><span class="hud-label">BILANZ</span><strong id="profileRecord">0–0</strong></div>
+          <button id="openProfileButton" class="button button-ghost button-compact" type="button">Profil &amp; Rangliste</button>
+        </section>
 
         <label class="field-label" for="playerName">Dein Name</label>
         <input id="playerName" class="text-input" maxlength="18" autocomplete="nickname" placeholder="z. B. AtlasKing" />
 
+        <section class="preset-row" aria-label="Regel-Presets">
+          <label class="setting-field preset-field" for="presetSelect"><span>Preset</span><select id="presetSelect" class="text-input select-input"></select></label>
+          <button id="savePresetButton" class="button button-ghost" type="button">Preset speichern</button>
+          <button id="deletePresetButton" class="button button-ghost" type="button">Löschen</button>
+        </section>
+
         <fieldset class="mode-picker">
           <legend>Kartenmodus</legend>
           <div class="mode-options">
-            <label class="mode-option">
-              <input type="radio" name="gameMode" value="map" checked />
-              <span class="mode-option-card">
-                <strong>2D Weltkarte</strong>
-                <small>Klassisch · zoomen &amp; pinnen</small>
-              </span>
-            </label>
-            <label class="mode-option">
-              <input type="radio" name="gameMode" value="globe" />
-              <span class="mode-option-card">
-                <strong>3D Globus</strong>
-                <small>Ohne Labels · präzise Erdkugel</small>
-              </span>
-            </label>
+            <label class="mode-option"><input type="radio" name="gameMode" value="map" checked /><span class="mode-option-card"><strong>2D Weltkarte</strong><small>Klassisch · zoomen &amp; pinnen</small></span></label>
+            <label class="mode-option"><input type="radio" name="gameMode" value="globe" /><span class="mode-option-card"><strong>3D Globus</strong><small>Ohne Labels · präzise Erde</small></span></label>
           </div>
         </fieldset>
 
         <section class="match-settings" aria-labelledby="settingsTitle">
-          <div class="settings-heading">
-            <strong id="settingsTitle">Match-Einstellungen</strong>
-            <small>gelten für Solo &amp; neue Lobby</small>
+          <div class="settings-heading"><strong id="settingsTitle">Match-Einstellungen</strong><small>Host-Regeln werden serverseitig synchronisiert</small></div>
+          <div class="settings-grid settings-grid-v2">
+            <label class="setting-field" for="regionSelect"><span>Region</span><select id="regionSelect" class="text-input select-input">
+              <option value="world">Weltweit</option>
+              <optgroup label="Europa"><option value="europe">Ganz Europa</option><option value="northern_europe">Nordeuropa</option><option value="southern_europe">Südeuropa</option><option value="western_europe">Westeuropa</option><option value="eastern_europe">Osteuropa</option></optgroup>
+              <optgroup label="Asien"><option value="asia">Ganz Asien</option><option value="western_asia">Westasien</option><option value="eastern_asia">Ostasien</option><option value="southeast_asia">Südostasien</option><option value="southern_asia">Südasien</option><option value="central_asia">Zentralasien</option></optgroup>
+              <optgroup label="Afrika"><option value="africa">Ganz Afrika</option><option value="north_africa">Nordafrika</option><option value="west_africa">Westafrika</option><option value="east_africa">Ostafrika</option><option value="central_africa">Zentralafrika</option><option value="southern_africa">Südliches Afrika</option></optgroup>
+              <optgroup label="Amerika"><option value="americas">Ganz Amerika</option><option value="north_america">Nordamerika</option><option value="central_america">Zentralamerika</option><option value="caribbean">Karibik</option><option value="south_america">Südamerika</option></optgroup>
+              <option value="oceania">Ozeanien</option>
+            </select></label>
+            <label class="setting-field" for="roundTimeSelect"><span>Zeit</span><select id="roundTimeSelect" class="text-input select-input"><option value="5">5 Sek.</option><option value="8">8 Sek.</option><option value="10">10 Sek.</option><option value="15">15 Sek.</option><option value="22" selected>22 Sek.</option><option value="30">30 Sek.</option><option value="45">45 Sek.</option><option value="60">60 Sek.</option></select></label>
+            <label class="setting-field" for="startingScoreSelect"><span>Startpunkte</span><select id="startingScoreSelect" class="text-input select-input"><option value="2500">2.500</option><option value="5000" selected>5.000</option><option value="7500">7.500</option><option value="10000">10.000</option><option value="15000">15.000</option></select></label>
+            <label class="setting-field" for="scoreMultiplierSelect"><span>Punkteabbau</span><select id="scoreMultiplierSelect" class="text-input select-input"><option value="0.5">×0,5</option><option value="1" selected>×1</option><option value="1.5">×1,5</option><option value="2">×2</option><option value="3">×3</option><option value="4">×4</option></select></label>
+            <label class="setting-field" for="formatSelect"><span>Matchtyp</span><select id="formatSelect" class="text-input select-input"><option value="race">5000 → 0</option><option value="distance">Distance Duel</option><option value="bestof">Best of</option><option value="sudden">Sudden Death</option></select></label>
+            <label id="bestOfField" class="setting-field hidden" for="bestOfSelect"><span>Best of</span><select id="bestOfSelect" class="text-input select-input"><option value="3">Best of 3</option><option value="5" selected>Best of 5</option><option value="7">Best of 7</option><option value="9">Best of 9</option></select></label>
+            <label class="setting-field" for="difficultySelect"><span>Flaggen</span><select id="difficultySelect" class="text-input select-input"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option><option value="insane">Insane</option></select></label>
+            <label class="setting-field" for="visualModeSelect"><span>Flaggenanzeige</span><select id="visualModeSelect" class="text-input select-input"><option value="flag">Volle Flagge</option><option value="crop">Mystery Crop</option><option value="flash">Blind Flash (2,5s)</option></select></label>
+            <label class="setting-field" for="scoringProfileSelect"><span>Genauigkeit</span><select id="scoringProfileSelect" class="text-input select-input"><option value="normal">Normal</option><option value="precision">Precision</option></select></label>
+            <label class="setting-field" for="playerLimitSelect"><span>Battle-Spieler</span><select id="playerLimitSelect" class="text-input select-input"><option value="4" selected>4 Spieler</option><option value="5">5 Spieler</option><option value="6">6 Spieler</option><option value="7">7 Spieler</option><option value="8">8 Spieler</option></select></label>
           </div>
-          <div class="settings-grid">
-            <label class="setting-field" for="regionSelect">
-              <span>Region</span>
-              <select id="regionSelect" class="text-input select-input">
-                <option value="world">Weltweit</option>
-                <option value="europe">Europa</option>
-                <option value="asia">Asien</option>
-                <option value="africa">Afrika</option>
-                <option value="americas">Amerika</option>
-                <option value="oceania">Ozeanien</option>
-              </select>
-            </label>
-            <label class="setting-field" for="roundTimeSelect">
-              <span>Zeit pro Flagge</span>
-              <select id="roundTimeSelect" class="text-input select-input">
-                <option value="10">10 Sekunden</option>
-                <option value="15">15 Sekunden</option>
-                <option value="22" selected>22 Sekunden</option>
-                <option value="30">30 Sekunden</option>
-                <option value="45">45 Sekunden</option>
-                <option value="60">60 Sekunden</option>
-              </select>
-            </label>
-            <label class="setting-field" for="startingScoreSelect">
-              <span>Startpunkte</span>
-              <select id="startingScoreSelect" class="text-input select-input">
-                <option value="2500">2.500</option>
-                <option value="5000" selected>5.000</option>
-                <option value="7500">7.500</option>
-                <option value="10000">10.000</option>
-              </select>
-            </label>
-            <label class="setting-field" for="scoreMultiplierSelect">
-              <span>Punkteabbau</span>
-              <select id="scoreMultiplierSelect" class="text-input select-input">
-                <option value="0.5">×0,5 · entspannt</option>
-                <option value="1" selected>×1 · normal</option>
-                <option value="1.5">×1,5 · schnell</option>
-                <option value="2">×2 · hart</option>
-                <option value="3">×3 · extrem</option>
-              </select>
-            </label>
+          <div class="toggle-row">
+            <label class="toggle-card"><input id="streakBonusToggle" type="checkbox" /><span><strong>Streak-Bonus</strong><small>Gute Serien geben bis ×1,5</small></span></label>
+            <label class="toggle-card"><input id="rankedToggle" type="checkbox" /><span><strong>Ranked</strong><small>Faire Standardregeln + Elo</small></span></label>
           </div>
           <p id="settingsHint" class="settings-hint">×1: perfekter Guess baut bis zu 1.000 Punkte ab.</p>
         </section>
 
-        <div class="start-actions">
-          <button id="soloStartButton" class="button button-primary button-large">Solo starten</button>
-          <button id="createRoomButton" class="button button-secondary button-large">1-vs-1 Lobby erstellen</button>
+        <div class="start-actions start-actions-v2">
+          <button id="soloStartButton" class="button button-primary button-large">Solo</button>
+          <button id="dailyStartButton" class="button button-daily button-large">Daily Challenge</button>
+          <button id="createRoomButton" class="button button-secondary button-large">1-vs-1 Lobby</button>
+          <button id="battleRoomButton" class="button button-secondary button-large">Battle Royale</button>
         </div>
 
-        <div class="divider"><span>oder Lobby beitreten</span></div>
+        <section class="daily-preview">
+          <div><span class="eyebrow">HEUTIGE DAILY</span><strong id="dailyLabel">10 gleiche Flaggen für alle</strong></div>
+          <div id="dailyTop" class="daily-top">Noch keine Scores.</div>
+        </section>
 
-        <div class="join-row">
-          <input id="roomCodeInput" class="text-input code-input" maxlength="6" autocomplete="off" placeholder="ABC123" aria-label="Lobby-Code" />
-          <button id="joinRoomButton" class="button button-secondary">Beitreten</button>
-        </div>
+        <div class="divider"><span>Lobby beitreten oder zuschauen</span></div>
+        <div class="join-row join-row-v2"><input id="roomCodeInput" class="text-input code-input" maxlength="6" autocomplete="off" placeholder="ABC123" aria-label="Lobby-Code" /><button id="joinRoomButton" class="button button-secondary">Beitreten</button><button id="spectateButton" class="button button-ghost">Zuschauen</button></div>
         <p id="homeError" class="form-error" role="alert"></p>
       </div>
-      <p class="home-note">Solo oder 1-vs-1 · Regeln frei konfigurierbar · 2D oder 3D</p>
+      <p class="home-note">Custom Presets · Elo · Achievements · Daily · Spectator · 2–8 Spieler</p>
     </section>
 
     <section id="lobbyScreen" class="screen lobby-screen hidden">
       <div class="ambient ambient-a"></div>
       <div class="lobby-card glass">
-        <p class="eyebrow">PRIVATE LOBBY</p>
-        <h2>Warte auf deinen Gegner</h2>
-        <p class="muted">Teile den Code oder kopiere den Einladungslink.</p>
-        <p id="lobbyModeBadge" class="mode-badge">2D WELTKARTE</p>
-        <div id="lobbySettings" class="settings-summary"></div>
+        <p class="eyebrow">PRIVATE LOBBY</p><h2 id="lobbyTitle">Warte auf Mitspieler</h2><p class="muted">Teile den Code oder Einladungslink. Zuschauer können mit demselben Code beitreten.</p>
+        <p id="lobbyModeBadge" class="mode-badge">3D GLOBUS</p><div id="lobbySettings" class="settings-summary"></div>
         <button id="copyCodeButton" class="room-code" title="Code kopieren"><span id="lobbyCode">------</span><small>KOPIEREN</small></button>
-
-        <div id="lobbyPlayers" class="lobby-players"></div>
-
-        <div class="lobby-actions">
-          <button id="copyLinkButton" class="button button-primary">Einladungslink kopieren</button>
-          <button id="leaveLobbyButton" class="button button-ghost">Lobby verlassen</button>
-        </div>
+        <div id="lobbyPlayers" class="lobby-players"></div><p id="spectatorCount" class="spectator-count">0 Zuschauer</p>
+        <div class="lobby-actions"><button id="copyLinkButton" class="button button-primary">Einladungslink kopieren</button><button id="leaveLobbyButton" class="button button-ghost">Lobby verlassen</button></div>
         <p id="lobbyStatus" class="lobby-status">Lobby ist offen…</p>
       </div>
     </section>
 
     <section id="gameScreen" class="screen game-screen hidden">
       <header class="game-hud glass">
-        <div class="hud-room">
-          <span id="hudRoomLabel" class="hud-label">LOBBY</span>
-          <strong id="hudRoomCode">------</strong>
-        </div>
+        <div class="hud-room"><span id="hudRoomLabel" class="hud-label">LOBBY</span><strong id="hudRoomCode">------</strong></div>
         <div id="scoreBoard" class="score-board">
-          <div id="selfScoreCard" class="score-player is-self">
-            <span id="selfName">Du</span>
-            <strong id="selfScore">5000</strong>
-          </div>
+          <div id="selfScoreCard" class="score-player is-self"><span id="selfName">Du</span><strong id="selfScore">5000</strong></div>
           <div class="round-chip"><span id="roundLabel">Runde 1</span></div>
-          <div id="opponentScoreCard" class="score-player">
-            <strong id="opponentScore">5000</strong>
-            <span id="opponentName">Gegner</span>
-          </div>
+          <div id="opponentScoreCard" class="score-player"><strong id="opponentScore">5000</strong><span id="opponentName">Gegner</span></div>
         </div>
-        <div class="timer-wrap" aria-label="Verbleibende Zeit">
-          <span id="timerText">22</span>
-          <svg class="timer-ring" viewBox="0 0 44 44" aria-hidden="true">
-            <circle class="timer-ring-bg" cx="22" cy="22" r="18"></circle>
-            <circle id="timerRingProgress" class="timer-ring-progress" cx="22" cy="22" r="18"></circle>
-          </svg>
-        </div>
-        <button id="gameMenuButton" class="game-menu-button" type="button" aria-label="Spielmenü öffnen" aria-expanded="false" aria-controls="gameMenuModal">
-          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
-        </button>
+        <div class="timer-wrap" aria-label="Verbleibende Zeit"><span id="timerText">22</span><svg class="timer-ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="timer-ring-bg" cx="22" cy="22" r="18"></circle><circle id="timerRingProgress" class="timer-ring-progress" cx="22" cy="22" r="18"></circle></svg></div>
+        <button id="gameMenuButton" class="game-menu-button" type="button" aria-label="Spielmenü öffnen" aria-expanded="false" aria-controls="gameMenuModal"><span></span><span></span><span></span></button>
       </header>
 
       <div id="map" class="world-map" aria-label="Interaktive Weltkarte"></div>
-      <div id="globe" class="earth-globe hidden" aria-label="Interaktiver 3D-Globus ohne Ortsnamen">
-        <div id="globeStatus" class="globe-status">3D-Globus wird geladen…</div>
-      </div>
-
+      <div id="globe" class="earth-globe hidden" aria-label="Interaktiver 3D-Globus ohne Ortsnamen"><div id="globeStatus" class="globe-status">3D-Globus wird geladen…</div></div>
       <div id="mapHint" class="map-hint glass">Tippe auf die Hauptstadt des Landes</div>
+      <aside id="battleRoster" class="battle-roster glass hidden"></aside>
+      <div id="spectatorBadge" class="spectator-badge hidden">ZUSCHAUER · LIVE</div>
 
       <aside id="flagDock" class="flag-dock glass">
-        <div class="flag-copy">
-          <span class="hud-label">WOHER KOMMT DIESE FLAGGE?</span>
-          <span id="guessState" class="guess-state">Ziel: Hauptstadt</span>
-        </div>
-        <div class="flag-frame">
-          <img id="flagImage" alt="Zu erratende Flagge" />
-        </div>
+        <div class="flag-copy"><span class="hud-label">WOHER KOMMT DIESE FLAGGE?</span><span id="guessState" class="guess-state">Ziel: Hauptstadt</span></div>
+        <div id="flagFrame" class="flag-frame"><img id="flagImage" alt="Zu erratende Flagge" /><div id="flagHiddenMessage" class="flag-hidden-message hidden">FLAGGE VERDECKT</div></div>
         <button id="submitGuessButton" class="button button-primary submit-button" disabled>Tipp abgeben</button>
       </aside>
 
       <div id="connectionBadge" class="connection-badge hidden">Verbindung wird wiederhergestellt…</div>
+      <div id="analysisBar" class="analysis-bar glass hidden"><strong>Matchanalyse / Guess-Heatmap</strong><button id="closeAnalysisButton" class="button button-primary">Zurück zum Ergebnis</button></div>
 
       <section id="gameMenuModal" class="modal-backdrop game-menu-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="gameMenuTitle">
-        <div class="modal-card game-menu-card glass">
-          <p class="eyebrow">SPIELMENÜ</p>
-          <h2 id="gameMenuTitle">Aktuelles Spiel</h2>
-          <p id="gameMenuContext" class="muted">Du kannst weiterspielen oder das Match verlassen.</p>
-          <button id="resumeGameButton" class="button button-primary button-large" type="button">Weiterspielen</button>
-          <button id="exitGameButton" class="button button-danger button-large" type="button">Spiel verlassen</button>
-        </div>
+        <div class="modal-card game-menu-card glass"><p class="eyebrow">SPIELMENÜ</p><h2 id="gameMenuTitle">Aktuelles Spiel</h2><p id="gameMenuContext" class="muted">Du kannst weiterspielen oder das Match verlassen.</p><button id="resumeGameButton" class="button button-primary button-large">Weiterspielen</button><button id="soundToggleButton" class="button button-ghost button-large">Sound: An</button><button id="exitGameButton" class="button button-danger button-large">Spiel verlassen</button></div>
       </section>
 
-      <section id="roundResult" class="result-panel glass hidden" aria-live="polite">
-        <p class="eyebrow">RUNDENERGEBNIS</p>
-        <h2 id="resultHeadline">Runde ausgewertet</h2>
-        <p id="resultCountry" class="result-country">Deutschland</p>
-        <div id="resultDistances" class="result-distances"></div>
-        <p id="resultCountdown" class="result-countdown">Nächste Runde in 9s</p>
-        <div class="next-round-track"><span id="nextRoundProgress"></span></div>
-      </section>
+      <section id="roundResult" class="result-panel glass hidden" aria-live="polite"><p class="eyebrow">RUNDENERGEBNIS</p><h2 id="resultHeadline">Runde ausgewertet</h2><p id="resultCountry" class="result-country">Deutschland</p><div id="resultDistances" class="result-distances"></div><p id="resultCountdown" class="result-countdown">Nächste Runde in 9s</p><div class="next-round-track"><span id="nextRoundProgress"></span></div></section>
 
       <section id="gameOverModal" class="modal-backdrop hidden">
-        <div class="modal-card glass">
-          <p class="eyebrow">MATCH BEENDET</p>
-          <h2 id="gameOverTitle">Du gewinnst!</h2>
-          <p id="gameOverScore" class="final-score">3 : 2</p>
-          <p id="gameOverNote" class="muted">Stark gespielt.</p>
-          <button id="rematchButton" class="button button-primary button-large">Rematch</button>
-          <button id="backHomeButton" class="button button-ghost">Zur Startseite</button>
-          <p id="rematchStatus" class="lobby-status"></p>
-        </div>
+        <div class="modal-card glass game-over-card"><p class="eyebrow">MATCH BEENDET</p><h2 id="gameOverTitle">Du gewinnst!</h2><p id="gameOverScore" class="final-score">0 : 1234</p><p id="gameOverNote" class="muted">Stark gespielt.</p><div id="matchStats" class="match-stats"></div><div id="dailyResultLeaderboard" class="daily-result-board hidden"></div><button id="analysisButton" class="button button-secondary button-large">Guess-Heatmap &amp; Analyse</button><button id="rematchButton" class="button button-primary button-large">Rematch</button><button id="backHomeButton" class="button button-ghost">Zur Startseite</button><p id="rematchStatus" class="lobby-status"></p></div>
       </section>
     </section>
 
+    <section id="profileModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+      <div class="modal-card glass profile-modal-card"><p class="eyebrow">SPIELERPROFIL</p><h2 id="profileTitle">Dein Profil</h2><div id="profileDetails" class="profile-details"></div><h3>Achievements</h3><div id="achievementList" class="achievement-list"></div><h3>Ranked Top 20</h3><div id="rankedLeaderboard" class="leaderboard-list"></div><button id="closeProfileButton" class="button button-primary button-large">Schließen</button></div>
+    </section>
+
     <div id="toast" class="toast hidden" role="status"></div>
+    <div id="achievementToast" class="achievement-toast hidden" role="status"><span>ACHIEVEMENT</span><strong id="achievementToastTitle">Bullseye</strong><small id="achievementToastText"></small></div>
   </main>
 
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
-      }
-    }
-  </script>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/vendor/leaflet/dist/leaflet.js"></script>
-  <script src="/app.js"></script>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"}}</script>
+  <script src="/socket.io/socket.io.js"></script><script src="/vendor/leaflet/dist/leaflet.js"></script><script src="/app.js"></script>
 </body>
 </html>

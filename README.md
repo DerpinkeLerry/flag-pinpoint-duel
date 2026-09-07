@@ -1,43 +1,8 @@
-# Flag Pinpoint
+# Flag Pinpoint V2
 
-Ein Browser-Flaggenspiel für **Solo** und **1-gegen-1 Multiplayer**. Du erkennst die Flagge und setzt deinen Tipp möglichst genau auf die Hauptstadt. Das Spiel ist wahlweise auf einer klassischen 2D-Karte oder auf einem präzisen, unbeschrifteten 3D-Globus spielbar.
+Flag Pinpoint ist ein Echtzeit-Geografie-Spiel mit Solo, Daily Challenge, privaten 1-vs-1-Lobbys, Ranked/Elo, Spectator-Modus und Battle Royale für 4–8 Spieler. Geraten wird die Hauptstadt zur gezeigten Flagge auf einer 2D-Karte oder auf einem unbeschrifteten präzisen 3D-Globus.
 
-## Features
-
-- Solo-Modus ohne Gegner und private 1v1-Lobbys mit sechsstelligen Codes
-- Echtzeit-Multiplayer über Socket.IO / WebSockets
-- Frei konfigurierbare Regeln für Solo und neue Multiplayer-Lobbys:
-  - Region: Weltweit, Europa, Asien, Afrika, Amerika oder Ozeanien
-  - Zeitlimit: 10, 15, 22, 30, 45 oder 60 Sekunden pro Flagge
-  - Startpunkte: 2.500, 5.000, 7.500 oder 10.000
-  - Punkteabbau-Multiplikator: ×0,5, ×1, ×1,5, ×2 oder ×3
-- Der Host legt alle Multiplayer-Regeln fest; beitretende Spieler übernehmen sie automatisch
-- Regionseinstellung begrenzt den Flaggen-/Länderpool serverseitig auf den gewählten Kontinent
-- Das Match endet, sobald ein Spieler bzw. im Solo-Modus der Spieler 0 Restpunkte erreicht
-- Basiswertung: perfekter Guess = bis zu 1.000 Punkte Abbau bei ×1
-- Multiplikator wirkt direkt auf den Punkteabbau, z. B. ×2 = bis zu 2.000 Punkte bei perfektem Guess
-- Weicher exponentieller Distanz-Falloff: weit entfernte Tipps bauen nur wenige Punkte ab
-- Zwei Kartenmodi: klassische 2D-Weltkarte oder interaktiver 3D-Globus
-- 3D-Globus mit echter WebGL-Kugel, Weltraum-Look, unbeschrifteter 8K-Erdtextur und ohne Länder-/Städtenamen
-- Präzise analytische Ray-Sphere-Auswahl auf dem Globus, unabhängig von der Mesh-Auflösung
-- Kleine zoomfeste Zielringe mit exaktem Mittelpunkt statt großer unpräziser Marker
-- Globus auf Desktop und Handy drehen und tief zoomen; Pinch-Zoom auf Touch-Geräten
-- Große interaktive 2D-Weltkarte mit Leaflet + OpenStreetMap
-- Distanzberechnung und Punkteberechnung ausschließlich auf dem Server
-- Hauptstadt-Zielpunkte mit festen Stadtkoordinaten
-- Stabiler kuratierter Flaggen-Pool mit 150+ spielbaren Ländern
-- Reveal-Phase mit Ziel, Tipps, Distanz und abgebauten Punkten
-- Rematch im Multiplayer und „Nochmal spielen“ im Solo-Modus mit identischen Regeln
-- Reconnect-Fenster bei kurzen Verbindungsabbrüchen
-- Ingame-Menü in Solo und 1v1 mit „Weiterspielen“ und sauberem „Spiel verlassen“
-- Verlässt ein Spieler ein laufendes 1v1 absichtlich, endet die Partie sofort für den verbleibenden Spieler statt festzuhängen
-- Responsive Mobil- und Desktop-Oberfläche
-- Opaque Flag-URLs: Der ISO-Ländercode wird nicht in der Browser-URL verraten
-- `/health` Endpoint und `render.yaml` für Render-Deployments
-
-## Lokal starten
-
-Voraussetzung: Node.js 22.x.
+## Start
 
 ```bash
 npm install
@@ -46,97 +11,68 @@ npm start
 
 Danach: `http://localhost:3000`
 
-Entwicklung mit Auto-Restart:
+## Spielmodi
 
-```bash
-npm run dev
-```
+- **Solo** – klassisches 5000→0-Spiel mit frei wählbaren Regeln.
+- **Daily Challenge** – jeden UTC-Tag dieselben 10 Länder für alle, feste faire Regeln, Tagesrangliste.
+- **1-vs-1 Classic** – beide bauen ihre eigenen Restpunkte Richtung 0 ab.
+- **Distance Duel** – nur der nähere Spieler erhält in der Runde Punkteabbau.
+- **Best of 3/5/7/9** – Rundensiege statt Health-Race.
+- **Sudden Death** – der erste eindeutig bessere Guess entscheidet das Match.
+- **Battle Royale** – 4–8 Spieler; pro Runde fliegt der schlechteste aktive Guess raus, bis einer übrig ist.
+- **Ranked** – feste Standardregeln auf dem 3D-Globus und Elo-Wertung.
+- **Spectator** – mit Lobby-Code live zuschauen, ohne ins Match einzugreifen.
 
-Tests:
+## Match-Einstellungen
+
+- 2D-Weltkarte oder 3D-Globus ohne Ortsnamen
+- Weltweit oder Regionen/Unterregionen wie Nordeuropa, Südostasien, Karibik usw.
+- 5 bis 60 Sekunden Rundenzeit
+- 2.500 bis 15.000 Startpunkte
+- Punkteabbau ×0,5 bis ×4
+- Flaggen-Schwierigkeit Easy / Medium / Hard / Insane
+- Volle Flagge / Mystery Crop / Blind Flash (2,5 Sekunden)
+- Normal- oder Precision-Distanzkurve
+- optionaler Streak-Bonus bis ×1,5
+- Battle-Royale-Größe 4–8 Spieler
+- eigene Regel-Presets im Browser speichern
+
+Mitgelieferte Presets: Standard, Hardcore Globe, Blitz 8s, Precision, Blind Guess, Distance Duel, Ranked Standard und Chaos ×3.
+
+## Wertung
+
+Im klassischen Modus startet standardmäßig jeder mit 5.000 Restpunkten. Ein perfekter Hauptstadt-Guess bringt bei ×1 bis zu 1.000 Punkte Abbau; mit zunehmender Distanz fällt der Wert exponentiell ab. Precision verwendet eine deutlich steilere Distanzkurve. Der Streak-Bonus erhöht sehr gute Serien schrittweise bis maximal ×1,5.
+
+## Profile, Elo & Achievements
+
+Der Server führt Spielerprofile mit Rating, Matches, Siegen/Niederlagen, durchschnittlicher Distanz, bestem Guess und Best-Streak. Ranked-Matches verändern das Elo-Rating. Achievements werden live freigeschaltet, z. B. Bullseye (<10 km), Sharpshooter, Speed Demon, On Fire, Daily Grinder und Last One Standing.
+
+Profile und Daily-Ranglisten werden standardmäßig in `data/progress.json` gespeichert. Die Datei ist per `.gitignore` ausgeschlossen. In automatischen Node-Testläufen wird Persistenz deaktiviert.
+
+## Matchanalyse
+
+Nach jedem Match zeigt die Ergebnisansicht Durchschnittsdistanz, besten Guess, durchschnittliche Antwortzeit und gesamte Guess-Punkte. Über **Guess-Heatmap & Analyse** werden alle eigenen Rundenpositionen erneut auf der 2D-Karte oder auf dem 3D-Globus dargestellt. Im Spectator-Modus kann die Historie aller Spieler betrachtet werden.
+
+Der 3D-Globus nutzt präzise Ray/Sphere-Klickberechnung, zoomfeste Fadenkreuz-Marker, hochauflösende Earth-Texturen mit Fallbacks, Resultat-Kamerafahrt und eine Impact-Welle an der aufgelösten Hauptstadt.
+
+## Sound
+
+Soundeffekte werden direkt per Web Audio erzeugt und benötigen keine Audiodateien. Im Ingame-Menü kann Sound jederzeit deaktiviert werden.
+
+## Technik
+
+- Node.js 22
+- Express 5
+- Socket.IO 4
+- Leaflet 1.9 für 2D
+- Three.js als Browser-ESM für den 3D-Globus
+- `world-countries` + lokale `flag-icons`
+- serverseitig autoritative Runden-, Timer- und Scoringlogik
+
+## Tests
 
 ```bash
 npm test
 ```
 
-## Match-Einstellungen
-
-Die Startseite enthält einen gemeinsamen Einstellungsblock für **Solo** und **neue 1v1-Lobbys**. Bei einer bestehenden Lobby gelten ausschließlich die Einstellungen des Hosts.
-
-### Region
-
-Die Region bestimmt, aus welchem Länderpool die nächste Flagge gezogen wird. Die Karte bzw. der Globus bleibt frei navigierbar; nur die möglichen Zielländer werden auf Weltweit, Europa, Asien, Afrika, Amerika oder Ozeanien begrenzt.
-
-### Zeitlimit
-
-Jede Runde bekommt das gewählte Zeitlimit. Nach Ablauf wird ein nicht abgegebener Tipp mit 0 Punkten gewertet.
-
-### Startpunkte
-
-Jeder Teilnehmer startet mit der gewählten Restpunktzahl. Im Solo-Modus gilt dieselbe Zahl für den eigenen Run.
-
-### Punkteabbau-Multiplikator
-
-Die normale Distanzkurve bleibt gleich, aber der mögliche Punkteabbau wird multipliziert. Bei ×1 bringt ein perfekter Treffer bis zu 1.000 Punkte, bei ×1,5 bis zu 1.500, bei ×2 bis zu 2.000 usw. Der Reststand kann dabei niemals unter 0 fallen.
-
-## Architektur
-
-```text
-flag-guessing-game/
-├── public/
-│   ├── app.js          # Browser-Logik, Solo/Multiplayer, Einstellungen, UI, Socket-Events
-│   ├── globe.js        # Three.js/WebGL-Globus, exakte Auswahl, 3D-Marker und Ergebnisbögen
-│   ├── index.html      # Home, Einstellungen, Lobby, Spiel und Ergebnis
-│   └── styles.css      # Responsive Design
-├── src/
-│   ├── capitals.js     # Hauptstadt-Koordinaten
-│   ├── countryPool.js  # Kuratierter ISO-Länderpool
-│   └── gameServer.js   # Express, Socket.IO, Solo/Lobbys, Regionen, Timer und Scoring
-├── tests/
-│   ├── capitals.test.js
-│   ├── countryPool.test.js
-│   ├── settings-solo.test.js
-│   └── smoke.test.js
-├── render.yaml
-├── server.js
-└── package.json
-```
-
-## Auf Render deployen
-
-### Variante A: mit `render.yaml`
-
-1. Projekt in ein GitHub-Repository pushen.
-2. Bei Render **New > Blueprint** wählen.
-3. Repository verbinden.
-4. Render erkennt `render.yaml` und erstellt den Node Web Service.
-5. Danach die erzeugte `*.onrender.com` URL öffnen.
-
-### Variante B: normaler Web Service
-
-1. Bei Render **New > Web Service** wählen und das Repository verbinden.
-2. Runtime: **Node**
-3. Build Command: `npm install --omit=dev`
-4. Start Command: `npm start`
-5. Health Check Path: `/health`
-
-Die Lobby- und Solo-Zustände liegen im Arbeitsspeicher des Node-Prozesses. Für horizontale Skalierung auf mehrere Instanzen sollten Zustand und Socket.IO-Pub/Sub später über Redis geteilt werden.
-
-## Karten-, Globus- und Flag-Daten
-
-- 2D-Karte: OpenStreetMap Tiles über Leaflet
-- 3D-Globus: Three.js/WebGL; keine Kartenlabels oder Ortsnamen auf der Kugel
-- Erdoberfläche: 8192×4096 NASA-Blue-Marble-Satellitentextur ohne Labels, mit 4K/2K-Fallback für kleinere GPU-Texturlimits
-- Länder-Metadaten und Kontinentzuordnung: `world-countries`
-- SVG-Flaggen: `flag-icons`
-
-Three.js und die Erdtextur werden im 3D-Modus per HTTPS geladen. Der Globus wählt abhängig vom WebGL-Texturlimit des Geräts automatisch die höchste sichere Auflösung und nutzt anisotrope Filterung für schärfere Details.
-
-## Version 1.3.0 – Solo & Custom Rules
-
-Neu sind ein echter Solo-Modus und gemeinsame Match-Einstellungen für Solo und Multiplayer. Region, Rundenzeit, Startpunkte und Punkteabbau-Multiplikator sind Teil des serverseitigen Matchzustands. Bei Multiplayer-Partien werden sie automatisch an beide Spieler synchronisiert und bei Rematches beibehalten.
-
-Die Regionsauswahl filtert den zufälligen Länderpool serverseitig, während das bestehende Hauptstadt-/Distanzsystem unverändert bleibt. Das Scoring berücksichtigt jetzt zusätzlich den Match-Multiplikator.
-
-## Version 1.3.1 – Ingame-Menü
-
-Während eines laufenden Solo- oder Multiplayer-Matches gibt es jetzt oben im HUD einen Menü-Button. Das Menü bietet „Weiterspielen“ und „Spiel verlassen“. Beim Verlassen eines Solo-Spiels wird die Session sauber beendet. Verlässt jemand ein aktives 1v1, wird das Match serverseitig sofort beendet und der verbleibende Spieler als Gewinner informiert.
+Die Tests decken u. a. Capital-Daten, Solo, Custom Rules, Lobby-Sync, Leave-Verhalten, 3D-Duell, Distance Duel, Best-of, Sudden Death, Battle Royale, Spectator, Ranked/Elo, deterministische Daily-Länder, Unterregionen, Blind Visual, Precision und Streaks ab.

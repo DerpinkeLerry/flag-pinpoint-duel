@@ -124,6 +124,8 @@ export class GlobeController {
     this.markerWorldPosition = new THREE.Vector3();
     this.resizeObserver = null;
     this.animationFrame = null;
+    this.cameraTween = null;
+    this.effects = [];
     this.destroyed = false;
     this.initialized = false;
   }
@@ -323,8 +325,10 @@ export class GlobeController {
   startRenderLoop() {
     const render = () => {
       if (this.destroyed) return;
+      this.updateCameraTween();
       this.controls?.update();
       this.updateMarkerScales();
+      this.updateEffects();
       if (this.container.offsetParent !== null && this.container.clientWidth > 0 && this.container.clientHeight > 0) {
         this.renderer.render(this.scene, this.camera);
       }
@@ -473,12 +477,65 @@ export class GlobeController {
     this.resultGroup.add(new THREE.Line(geometry, material));
   }
 
-  focusLatLng(lat, lng) {
+  focusLatLng(lat, lng, { animate = true, distance = 1.72 } = {}) {
     if (!this.camera || !this.controls) return;
-    const direction = latLngToVector3(lat, lng, 1).normalize();
-    this.camera.position.copy(direction.multiplyScalar(1.95));
-    this.controls.target.set(0, 0, 0);
-    this.controls.update();
+    const end = latLngToVector3(lat, lng, 1).normalize().multiplyScalar(distance);
+    if (!animate) {
+      this.camera.position.copy(end);
+      this.controls.target.set(0, 0, 0);
+      this.controls.update();
+      return;
+    }
+    this.cameraTween = {
+      start: this.camera.position.clone(),
+      end,
+      startedAt: performance.now(),
+      duration: 900,
+    };
+  }
+
+  updateCameraTween() {
+    if (!this.cameraTween || !this.camera) return;
+    const elapsed = performance.now() - this.cameraTween.startedAt;
+    const t = clamp(elapsed / this.cameraTween.duration, 0, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const startDir = this.cameraTween.start.clone().normalize();
+    const endDir = this.cameraTween.end.clone().normalize();
+    const radius = THREE.MathUtils.lerp(this.cameraTween.start.length(), this.cameraTween.end.length(), eased);
+    this.camera.position.copy(this.greatCirclePoint(startDir, endDir, eased).multiplyScalar(radius));
+    if (t >= 1) this.cameraTween = null;
+  }
+
+  addImpactPulse(lat, lng, color = COLORS.target) {
+    if (!this.resultGroup) return;
+    const direction = latLngToVector3(lat, lng, EARTH_RADIUS).normalize();
+    const group = new THREE.Group();
+    group.position.copy(direction.clone().multiplyScalar(EARTH_RADIUS + SURFACE_EPSILON * 1.4));
+    group.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction));
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.018, 0.023, 72),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    group.add(ring);
+    this.resultGroup.add(group);
+    this.effects.push({ object: group, material: ring.material, startedAt: performance.now(), duration: 1200 });
+  }
+
+  updateEffects() {
+    if (!this.effects.length) return;
+    const now = performance.now();
+    this.effects = this.effects.filter((effect) => {
+      const t = clamp((now - effect.startedAt) / effect.duration, 0, 1);
+      const scale = 1 + t * 9;
+      effect.object.scale.setScalar(scale);
+      effect.material.opacity = 0.85 * (1 - t);
+      if (t >= 1) {
+        effect.object.parent?.remove(effect.object);
+        disposeObject(effect.object);
+        return false;
+      }
+      return true;
+    });
   }
 
   showRoundResult(payload, selfId) {
@@ -495,7 +552,29 @@ export class GlobeController {
       this.resultGroup.add(this.makeMarker(guess.lat, guess.lng, color, 5));
       this.addArc(guess.lat, guess.lng, target.lat, target.lng, color);
     }
-    this.focusLatLng(target.lat, target.lng);
+    this.addImpactPulse(target.lat, target.lng);
+    this.focusLatLng(target.lat, target.lng, { animate: true, distance: 1.72 });
+  }
+
+  showMatchHistory(history, selfId, { allPlayers = false } = {}) {
+    if (!this.resultGroup) return;
+    this.clearRound();
+    const rounds = Array.isArray(history) ? history : [];
+    const selected = rounds.slice(-40);
+    selected.forEach((round, roundIndex) => {
+      const target = round?.target;
+      if (Number.isFinite(target?.lat) && Number.isFinite(target?.lng)) {
+        this.resultGroup.add(this.makeMarker(target.lat, target.lng, COLORS.target, 2.9, { target: true }));
+      }
+      (round?.guesses || []).filter((guess) => allPlayers || guess.playerId === selfId).forEach((guess, guessIndex) => {
+        if (!Number.isFinite(guess.lat) || !Number.isFinite(guess.lng)) return;
+        const palette = [COLORS.self, COLORS.opponent, 0xf472b6, 0xa78bfa, 0xfb923c, 0x22d3ee, 0xfacc15, 0xc084fc];
+        const color = allPlayers ? palette[guessIndex % palette.length] : COLORS.self;
+        const quality = Number.isFinite(guess.distanceKm) ? clamp(1 - guess.distanceKm / 6000, 0, 1) : 0;
+        this.resultGroup.add(this.makeMarker(guess.lat, guess.lng, color, 2.4 + quality * 2.4));
+      });
+    });
+    this.resetView();
   }
 
   destroy() {
