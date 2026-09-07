@@ -158,6 +158,9 @@
             <circle id="timerRingProgress" class="timer-ring-progress" cx="22" cy="22" r="18"></circle>
           </svg>
         </div>
+        <button id="gameMenuButton" class="game-menu-button" type="button" aria-label="Spielmenü öffnen" aria-expanded="false" aria-controls="gameMenuModal">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
       </header>
 
       <div id="map" class="world-map" aria-label="Interaktive Weltkarte"></div>
@@ -179,6 +182,16 @@
       </aside>
 
       <div id="connectionBadge" class="connection-badge hidden">Verbindung wird wiederhergestellt…</div>
+
+      <section id="gameMenuModal" class="modal-backdrop game-menu-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="gameMenuTitle">
+        <div class="modal-card game-menu-card glass">
+          <p class="eyebrow">SPIELMENÜ</p>
+          <h2 id="gameMenuTitle">Aktuelles Spiel</h2>
+          <p id="gameMenuContext" class="muted">Du kannst weiterspielen oder das Match verlassen.</p>
+          <button id="resumeGameButton" class="button button-primary button-large" type="button">Weiterspielen</button>
+          <button id="exitGameButton" class="button button-danger button-large" type="button">Spiel verlassen</button>
+        </div>
+      </section>
 
       <section id="roundResult" class="result-panel glass hidden" aria-live="polite">
         <p class="eyebrow">RUNDENERGEBNIS</p>

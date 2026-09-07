@@ -29,6 +29,8 @@ Ein Browser-Flaggenspiel für **Solo** und **1-gegen-1 Multiplayer**. Du erkenns
 - Reveal-Phase mit Ziel, Tipps, Distanz und abgebauten Punkten
 - Rematch im Multiplayer und „Nochmal spielen“ im Solo-Modus mit identischen Regeln
 - Reconnect-Fenster bei kurzen Verbindungsabbrüchen
+- Ingame-Menü in Solo und 1v1 mit „Weiterspielen“ und sauberem „Spiel verlassen“
+- Verlässt ein Spieler ein laufendes 1v1 absichtlich, endet die Partie sofort für den verbleibenden Spieler statt festzuhängen
 - Responsive Mobil- und Desktop-Oberfläche
 - Opaque Flag-URLs: Der ISO-Ländercode wird nicht in der Browser-URL verraten
 - `/health` Endpoint und `render.yaml` für Render-Deployments
@@ -134,3 +136,7 @@ Three.js und die Erdtextur werden im 3D-Modus per HTTPS geladen. Der Globus wäh
 Neu sind ein echter Solo-Modus und gemeinsame Match-Einstellungen für Solo und Multiplayer. Region, Rundenzeit, Startpunkte und Punkteabbau-Multiplikator sind Teil des serverseitigen Matchzustands. Bei Multiplayer-Partien werden sie automatisch an beide Spieler synchronisiert und bei Rematches beibehalten.
 
 Die Regionsauswahl filtert den zufälligen Länderpool serverseitig, während das bestehende Hauptstadt-/Distanzsystem unverändert bleibt. Das Scoring berücksichtigt jetzt zusätzlich den Match-Multiplikator.
+
+## Version 1.3.1 – Ingame-Menü
+
+Während eines laufenden Solo- oder Multiplayer-Matches gibt es jetzt oben im HUD einen Menü-Button. Das Menü bietet „Weiterspielen“ und „Spiel verlassen“. Beim Verlassen eines Solo-Spiels wird die Session sauber beendet. Verlässt jemand ein aktives 1v1, wird das Match serverseitig sofort beendet und der verbleibende Spieler als Gewinner informiert.

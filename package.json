@@ -1,6 +1,6 @@
 {
   "name": "flag-pinpoint-duel",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "description": "Solo and 1v1 flag guessing game with configurable rules, 2D map and unlabeled precision 3D globe.",
   "main": "server.js",

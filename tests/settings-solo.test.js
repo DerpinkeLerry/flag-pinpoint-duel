@@ -139,3 +139,41 @@ test('multiplayer lobby synchronizes host settings and regional pool', async (t)
   await emitAck(host, 'leave-room', { playerId: 'settings_host_123456' });
   await emitAck(guest, 'leave-room', { playerId: 'settings_guest_123456' });
 });
+
+
+test('leaving an active duel ends the match for the remaining player', async (t) => {
+  const { game, url } = await startTestServer();
+  const host = Client(url, { transports: ['websocket'] });
+  const guest = Client(url, { transports: ['websocket'] });
+  t.after(async () => { host.close(); guest.close(); await game.close(); });
+
+  await Promise.all([once(host, 'connect'), once(guest, 'connect')]);
+  await emitAck(host, 'hello', { playerId: 'menu_host_123456' });
+  await emitAck(guest, 'hello', { playerId: 'menu_guest_123456' });
+
+  const created = await emitAck(host, 'create-room', {
+    playerId: 'menu_host_123456',
+    name: 'Host',
+    mode: 'globe',
+  });
+  assert.equal(created.ok, true);
+
+  const guestRound = once(guest, 'round-start');
+  assert.equal((await emitAck(guest, 'join-room', {
+    playerId: 'menu_guest_123456',
+    name: 'Guest',
+    roomCode: created.roomCode,
+  })).ok, true);
+  await guestRound;
+
+  const guestGameOver = once(guest, 'game-over');
+  assert.equal((await emitAck(host, 'leave-room', { playerId: 'menu_host_123456' })).ok, true);
+
+  const gameOver = await guestGameOver;
+  assert.equal(gameOver.reason, 'opponent-left');
+  assert.equal(gameOver.winnerId, 'menu_guest_123456');
+  assert.equal(gameOver.kind, 'duel');
+  assert.equal(game.debug.rooms.get(created.roomCode).players.length, 1);
+  assert.equal(game.debug.rooms.get(created.roomCode).players[0].id, 'menu_guest_123456');
+  assert.equal(game.debug.rooms.get(created.roomCode).status, 'ended');
+});

@@ -747,8 +747,17 @@ function createGameServer(options = {}) {
       if (!playerId) return safeAck(ack, { ok: false });
       const record = players.get(playerId);
       const oldRoomCode = record?.roomCode;
-      leaveCurrentRoom(playerId);
-      if (oldRoomCode) socket.leave(oldRoomCode);
+      const room = oldRoomCode ? rooms.get(oldRoomCode) : null;
+
+      if (room?.status === 'playing' && room.kind === 'duel') {
+        const opponent = room.players.find((player) => player.id !== playerId);
+        if (oldRoomCode) socket.leave(oldRoomCode);
+        if (opponent) endGame(room, opponent.id, 'opponent-left');
+        leaveCurrentRoom(playerId);
+      } else {
+        leaveCurrentRoom(playerId);
+        if (oldRoomCode) socket.leave(oldRoomCode);
+      }
       safeAck(ack, { ok: true });
     });
 

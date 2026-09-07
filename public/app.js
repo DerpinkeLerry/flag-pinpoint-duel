@@ -39,6 +39,11 @@ const els = {
   timerText: document.getElementById('timerText'),
   timerRingProgress: document.getElementById('timerRingProgress'),
   timerWrap: document.querySelector('.timer-wrap'),
+  gameMenuButton: document.getElementById('gameMenuButton'),
+  gameMenuModal: document.getElementById('gameMenuModal'),
+  gameMenuContext: document.getElementById('gameMenuContext'),
+  resumeGameButton: document.getElementById('resumeGameButton'),
+  exitGameButton: document.getElementById('exitGameButton'),
   map: document.getElementById('map'),
   globe: document.getElementById('globe'),
   globeStatus: document.getElementById('globeStatus'),
@@ -166,7 +171,24 @@ function setScreen(name) {
   els.homeScreen.classList.toggle('hidden', name !== 'home');
   els.lobbyScreen.classList.toggle('hidden', name !== 'lobby');
   els.gameScreen.classList.toggle('hidden', name !== 'game');
+  if (name !== 'game') closeGameMenu();
   if (name === 'game') syncGameSurface();
+}
+
+function openGameMenu() {
+  if (state.currentScreen !== 'game' || !state.roomCode) return;
+  const isSolo = currentMatchKind() === 'solo';
+  els.gameMenuContext.textContent = isSolo
+    ? 'Das Solo-Spiel wird beendet und du kehrst zum Hauptmenü zurück.'
+    : 'Wenn du gehst, endet das laufende Match für deinen Gegner sofort.';
+  els.gameMenuModal.classList.remove('hidden');
+  els.gameMenuButton.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => els.resumeGameButton.focus());
+}
+
+function closeGameMenu() {
+  els.gameMenuModal?.classList.add('hidden');
+  els.gameMenuButton?.setAttribute('aria-expanded', 'false');
 }
 
 function syncGameSurface() {
@@ -647,6 +669,7 @@ function formatDistance(km) {
 }
 
 function showGameOver(payload) {
+  closeGameMenu();
   setRoomMeta(payload);
   clearInterval(state.timerInterval);
   clearInterval(state.resultCountdownTimer);
@@ -660,6 +683,8 @@ function showGameOver(payload) {
   const draw = !payload.winnerId;
   const startingScore = Number(payload.settings?.startingScore || state.room?.startingScore || 5000);
 
+  els.rematchButton.classList.remove('hidden');
+
   if (isSolo) {
     els.gameOverTitle.textContent = selfWon ? 'Geschafft!' : 'Solo beendet';
     els.gameOverScore.textContent = `${Number(self?.score ?? 0).toLocaleString('de-DE')} Punkte`;
@@ -671,8 +696,12 @@ function showGameOver(payload) {
   } else {
     els.gameOverTitle.textContent = draw ? 'Unentschieden!' : selfWon ? 'Du gewinnst!' : 'Gegner gewinnt';
     els.gameOverScore.textContent = `${self?.score ?? 0} : ${opponent?.score ?? 0}`;
-    if (payload.reason === 'opponent-disconnected' && selfWon) {
+    if (payload.reason === 'opponent-left' && selfWon) {
+      els.gameOverNote.textContent = 'Dein Gegner hat das Spiel verlassen.';
+      els.rematchButton.classList.add('hidden');
+    } else if (payload.reason === 'opponent-disconnected' && selfWon) {
       els.gameOverNote.textContent = 'Dein Gegner hat die Verbindung nicht wiederhergestellt.';
+      els.rematchButton.classList.add('hidden');
     } else {
       els.gameOverNote.textContent = draw
         ? 'Ihr habt 0 gleichzeitig mit exakt gleicher Distanz erreicht.'
@@ -700,18 +729,27 @@ function inviteUrl() {
 }
 
 async function leaveRoom() {
-  if (state.roomCode) {
-    await emitAck('leave-room', { playerId: state.playerId });
+  closeGameMenu();
+  const roomCode = state.roomCode;
+  if (roomCode && socket.connected) {
+    await Promise.race([
+      emitAck('leave-room', { playerId: state.playerId }),
+      new Promise((resolve) => setTimeout(resolve, 900)),
+    ]);
   }
   resetHome();
 }
 
 function resetHome() {
+  closeGameMenu();
   state.roomCode = null;
   state.room = null;
   state.roundDeadline = 0;
+  state.pendingGuess = null;
+  state.submitted = false;
   clearInterval(state.timerInterval);
   clearTimeout(state.resultTimer);
+  clearInterval(state.resultCountdownTimer);
   state.globeController?.clearRound();
   els.gameOverModal.classList.add('hidden');
   els.roundResult.classList.add('hidden');
@@ -737,6 +775,15 @@ els.playerName.addEventListener('keydown', (event) => { if (event.key === 'Enter
 els.copyCodeButton.addEventListener('click', () => copyText(state.roomCode || '', 'Lobby-Code kopiert'));
 els.copyLinkButton.addEventListener('click', () => copyText(inviteUrl(), 'Einladungslink kopiert'));
 els.leaveLobbyButton.addEventListener('click', leaveRoom);
+els.gameMenuButton.addEventListener('click', openGameMenu);
+els.resumeGameButton.addEventListener('click', closeGameMenu);
+els.exitGameButton.addEventListener('click', leaveRoom);
+els.gameMenuModal.addEventListener('click', (event) => {
+  if (event.target === els.gameMenuModal) closeGameMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !els.gameMenuModal.classList.contains('hidden')) closeGameMenu();
+});
 els.submitGuessButton.addEventListener('click', submitGuess);
 els.backHomeButton.addEventListener('click', leaveRoom);
 els.rematchButton.addEventListener('click', async () => {
