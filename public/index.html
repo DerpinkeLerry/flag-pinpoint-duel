@@ -22,7 +22,7 @@
             <h1>FLAG <span>PINPOINT</span></h1>
           </div>
         </div>
-        <p class="hero-copy">Erkenne die Flagge. Setze deinen Pin möglichst auf die Hauptstadt des Landes. Wer näher am Hauptstadt-Ziel liegt, holt die Runde.</p>
+        <p class="hero-copy">Erkenne die Flagge. Setze deinen Pin möglichst auf die Hauptstadt des Landes. Je näher dein Pin an der Hauptstadt liegt, desto mehr deiner 5000 Restpunkte baust du ab. Wer zuerst 0 erreicht, gewinnt.</p>
 
         <label class="field-label" for="playerName">Dein Name</label>
         <input id="playerName" class="text-input" maxlength="18" autocomplete="nickname" placeholder="z. B. AtlasKing" />
@@ -37,7 +37,7 @@
         </div>
         <p id="homeError" class="form-error" role="alert"></p>
       </div>
-      <p class="home-note">5 Runden · 22 Sekunden pro Flagge · kein Account nötig</p>
+      <p class="home-note">5000 → 0 · bis zu 1000 Punkte pro Guess · 22 Sekunden pro Flagge</p>
     </section>
 
     <section id="lobbyScreen" class="screen lobby-screen hidden">
@@ -67,11 +67,11 @@
         <div class="score-board">
           <div id="selfScoreCard" class="score-player is-self">
             <span id="selfName">Du</span>
-            <strong id="selfScore">0</strong>
+            <strong id="selfScore">5000</strong>
           </div>
-          <div class="round-chip"><span id="roundLabel">Runde 1/5</span></div>
+          <div class="round-chip"><span id="roundLabel">Runde 1</span></div>
           <div id="opponentScoreCard" class="score-player">
-            <strong id="opponentScore">0</strong>
+            <strong id="opponentScore">5000</strong>
             <span id="opponentName">Gegner</span>
           </div>
         </div>
@@ -103,7 +103,7 @@
 
       <section id="roundResult" class="result-panel glass hidden" aria-live="polite">
         <p class="eyebrow">RUNDENERGEBNIS</p>
-        <h2 id="resultHeadline">Punkt für dich!</h2>
+        <h2 id="resultHeadline">Runde ausgewertet</h2>
         <p id="resultCountry" class="result-country">Deutschland</p>
         <div id="resultDistances" class="result-distances"></div>
         <p id="resultCountdown" class="result-countdown">Nächste Runde in 9s</p>

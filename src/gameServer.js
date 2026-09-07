@@ -15,10 +15,15 @@ const LEAFLET_DIR = path.dirname(require.resolve('leaflet/package.json'));
 const FLAG_ICONS_DIR = path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '4x3');
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_LENGTH = 6;
+const DEFAULT_STARTING_SCORE = 5000;
+const DEFAULT_MAX_ROUND_POINTS = 1000;
+const DEFAULT_SCORE_DISTANCE_SCALE_KM = 1750;
 
 function createGameServer(options = {}) {
   const config = {
-    totalRounds: options.totalRounds ?? 5,
+    startingScore: options.startingScore ?? DEFAULT_STARTING_SCORE,
+    maxRoundPoints: options.maxRoundPoints ?? DEFAULT_MAX_ROUND_POINTS,
+    scoreDistanceScaleKm: options.scoreDistanceScaleKm ?? DEFAULT_SCORE_DISTANCE_SCALE_KM,
     roundStartDelayMs: options.roundStartDelayMs ?? 1200,
     roundDurationMs: options.roundDurationMs ?? 22000,
     revealDurationMs: options.revealDurationMs ?? 9000,
@@ -157,7 +162,8 @@ function createGameServer(options = {}) {
     return {
       roomCode: room.code,
       status: room.status,
-      totalRounds: room.totalRounds,
+      startingScore: room.startingScore,
+      maxRoundPoints: config.maxRoundPoints,
       players: publicPlayers(room),
     };
   }
@@ -207,7 +213,6 @@ function createGameServer(options = {}) {
     if (room.status === 'playing' && room.target && room.flagToken) {
       payload.round = {
         roundNumber: room.roundIndex + 1,
-        totalRounds: room.totalRounds,
         flagUrl: `/api/flag/${room.flagToken}`,
         deadline: room.deadline,
         serverTime: Date.now(),
@@ -286,7 +291,7 @@ function createGameServer(options = {}) {
     room.lastRoundResult = null;
     room.resultExpiresAt = 0;
     room.players.forEach((player) => {
-      player.score = 0;
+      player.score = room.startingScore;
       player.guess = null;
     });
     emitLobby(room);
@@ -305,7 +310,6 @@ function createGameServer(options = {}) {
 
     io.to(room.code).emit('round-start', {
       roundNumber: room.roundIndex + 1,
-      totalRounds: room.totalRounds,
       flagUrl: `/api/flag/${room.flagToken}`,
       deadline: room.deadline,
       serverTime: Date.now(),
@@ -328,6 +332,12 @@ function createGameServer(options = {}) {
     return 2 * R * Math.asin(Math.sqrt(h));
   }
 
+  function roundPointsForDistance(distanceKm) {
+    if (!Number.isFinite(distanceKm) || distanceKm < 0) return 0;
+    const raw = config.maxRoundPoints * Math.exp(-distanceKm / config.scoreDistanceScaleKm);
+    return Math.max(0, Math.min(config.maxRoundPoints, Math.round(raw)));
+  }
+
   function finishRound(room) {
     if (room.status !== 'playing' || !room.target) return;
     if (room.roundTimer) clearTimeout(room.roundTimer);
@@ -337,12 +347,18 @@ function createGameServer(options = {}) {
       const distanceKm = player.guess
         ? haversineKm(player.guess.lat, player.guess.lng, room.target.lat, room.target.lng)
         : null;
+      const roundPoints = roundPointsForDistance(distanceKm);
+      const scoreBefore = player.score;
+      player.score = Math.max(0, player.score - roundPoints);
       return {
         playerId: player.id,
         name: player.name,
         lat: player.guess?.lat ?? null,
         lng: player.guess?.lng ?? null,
         distanceKm,
+        roundPoints,
+        scoreBefore,
+        scoreAfter: player.score,
       };
     });
 
@@ -357,10 +373,17 @@ function createGameServer(options = {}) {
       }
     }
 
-    if (winnerId) {
-      const winner = getPlayer(room, winnerId);
-      if (winner) winner.score += 1;
+    const zeroPlayers = room.players.filter((player) => player.score === 0);
+    let matchWinnerId = null;
+    if (zeroPlayers.length === 1) {
+      matchWinnerId = zeroPlayers[0].id;
+    } else if (zeroPlayers.length === 2) {
+      const [a, b] = guesses;
+      if (Math.abs((a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity)) > 0.001) {
+        matchWinnerId = (a.distanceKm ?? Infinity) < (b.distanceKm ?? Infinity) ? a.playerId : b.playerId;
+      }
     }
+    const matchEnded = zeroPlayers.length > 0;
 
     const resultPayload = {
       roundNumber: room.roundIndex + 1,
@@ -372,20 +395,20 @@ function createGameServer(options = {}) {
       },
       guesses,
       winnerId,
+      matchWinnerId,
+      matchEnded,
       scores: room.players.map((player) => ({ playerId: player.id, name: player.name, score: player.score })),
       nextRoundInMs: config.revealDurationMs,
-      isLastRound: room.roundIndex + 1 >= room.totalRounds,
     };
     room.lastRoundResult = resultPayload;
     room.resultExpiresAt = Date.now() + config.revealDurationMs;
     io.to(room.code).emit('round-result', resultPayload);
     emitLobby(room);
 
-    const isLastRound = room.roundIndex + 1 >= room.totalRounds;
     room.target = null;
     room.flagToken = null;
     room.transitionTimer = setTimeout(() => {
-      if (isLastRound) endGame(room);
+      if (matchEnded) endGame(room, matchWinnerId, 'score-zero');
       else nextRound(room);
     }, config.revealDurationMs);
   }
@@ -401,7 +424,7 @@ function createGameServer(options = {}) {
     let winnerId = forcedWinnerId;
     if (!winnerId && scores.length === 2) {
       if (scores[0].score !== scores[1].score) {
-        winnerId = scores[0].score > scores[1].score ? scores[0].playerId : scores[1].playerId;
+        winnerId = scores[0].score < scores[1].score ? scores[0].playerId : scores[1].playerId;
       }
     }
 
@@ -456,7 +479,7 @@ function createGameServer(options = {}) {
       const room = {
         code: roomCode,
         status: 'waiting',
-        totalRounds: config.totalRounds,
+        startingScore: config.startingScore,
         roundIndex: -1,
         usedCountries: new Set(),
         players: [],
@@ -478,7 +501,7 @@ function createGameServer(options = {}) {
         name: normalizeName(data.name),
         socketId: socket.id,
         connected: true,
-        score: 0,
+        score: config.startingScore,
         guess: null,
       };
       room.players.push(player);
@@ -523,7 +546,7 @@ function createGameServer(options = {}) {
         name: normalizeName(data.name),
         socketId: socket.id,
         connected: true,
-        score: 0,
+        score: config.startingScore,
         guess: null,
       };
       room.players.push(player);
@@ -624,6 +647,11 @@ function createGameServer(options = {}) {
     debug: {
       playableCountries,
       rooms,
+      scoreSettings: {
+        startingScore: config.startingScore,
+        maxRoundPoints: config.maxRoundPoints,
+        scoreDistanceScaleKm: config.scoreDistanceScaleKm,
+      },
     },
     close: async () => {
       for (const room of rooms.values()) clearRoomTimers(room);

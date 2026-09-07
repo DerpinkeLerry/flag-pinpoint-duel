@@ -6,15 +6,17 @@ Ein komplettes 1-gegen-1-Flaggen-Spiel für den Browser. Ein Spieler erstellt ei
 
 - Private 1v1-Lobbys mit sechsstelligen Codes
 - Echtzeit-Multiplayer über Socket.IO / WebSockets
-- 5 Runden pro Match, 22 Sekunden pro Flagge
+- Beide Spieler starten mit 5000 Restpunkten; wer zuerst 0 erreicht, gewinnt
+- Bis zu 1000 Punkte Fortschritt pro Guess, mit weichem Distanz-Falloff zur Hauptstadt
+- 22 Sekunden pro Flagge; das Match läuft so viele Runden wie nötig
 - Große interaktive Weltkarte mit Leaflet + OpenStreetMap
 - Pin setzen und Tipp verbindlich abgeben
 - Distanzberechnung ausschließlich auf dem Server (Haversine)
-- Rundensieger ist der Spieler mit der kleineren Distanz zur Hauptstadt des Landes
+- Je näher der Tipp an der Hauptstadt liegt, desto mehr Restpunkte werden beim eigenen Stand abgezogen
 - Hauptstadt-Zielpunkte mit festen Stadtkoordinaten statt ungefährem Ländermittelpunkt
 - Stabiler kuratierter Flaggen-Pool mit 150+ eher spielbaren Ländern; unabhängig von optionalen `world-countries`-Feldern
 - 9 Sekunden Reveal-Zeit mit sichtbaren Spieler-Pins, Hauptstadt-Ziel und Verbindungslinien
-- Live-Score und Ergebnisbox in der Kartenecke statt ueber den Pins
+- Live-Restscore und Ergebnisbox mit Distanz + abgebauten Punkten
 - Rematch ohne neue Lobby
 - Reconnect-Fenster bei kurzen Verbindungsabbrüchen
 - Mobil- und Desktop-Layout
@@ -101,3 +103,7 @@ Die Flaggen werden vom eigenen Server über zufällige Tokens ausgeliefert. Dadu
 ## Hotfix 1.1.1
 
 `world-countries@5.1.0` stellt kein `population`-Feld bereit. In Version 1.1.0 wurde ein fehlender Wert dadurch als `0` behandelt und der Flaggen-Pool fiel auf nur acht Sonderfälle zusammen. Version 1.1.1 verwendet stattdessen eine feste kuratierte ISO-Liste und fällt bei unerwarteten Paketänderungen auf alle Länder mit vollständigen Hauptstadt- und Flag-Daten zurück, statt den Render-Prozess beim Start abzubrechen.
+
+## Scoring
+
+Jeder Spieler startet bei **5000**. Pro Runde werden anhand der Entfernung zur gesuchten Hauptstadt **0 bis 1000 Punkte** vom eigenen Reststand abgezogen. Ein perfekter Treffer ergibt 1000 Punkte; mit wachsender Entfernung fällt die Wertung exponentiell ab, sodass sehr weit entfernte Tipps nur wenige oder gar keine Punkte abbauen. Das Match endet, sobald ein Spieler 0 erreicht.

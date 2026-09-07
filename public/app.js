@@ -243,7 +243,7 @@ function startRound(payload, { synced = false } = {}) {
   clearInterval(state.resultCountdownTimer);
   clearMapRound();
   els.flagImage.src = payload.flagUrl;
-  els.roundLabel.textContent = `Runde ${payload.roundNumber}/${payload.totalRounds}`;
+  els.roundLabel.textContent = `Runde ${payload.roundNumber}`;
   state.roundDeadline = Number(payload.deadline || 0);
   state.roundDuration = Number(payload.roundDurationMs || 22000);
   state.submitted = Boolean(payload.hasGuessed);
@@ -321,16 +321,24 @@ function showRoundResult(payload) {
 
   const selfGuess = payload.guesses.find((guess) => guess.playerId === state.playerId);
   const opponentGuess = payload.guesses.find((guess) => guess.playerId !== state.playerId);
-  const isDraw = !payload.winnerId;
-  const selfWon = payload.winnerId === state.playerId;
-  els.resultHeadline.textContent = isDraw ? 'Unentschieden' : selfWon ? 'Punkt für dich!' : 'Punkt für den Gegner';
+  const selfRoundPoints = Number(selfGuess?.roundPoints || 0);
+  const opponentRoundPoints = Number(opponentGuess?.roundPoints || 0);
+  if (selfRoundPoints === 0) {
+    els.resultHeadline.textContent = 'Keine Punkte abgebaut';
+  } else if (selfRoundPoints > opponentRoundPoints) {
+    els.resultHeadline.textContent = `Stark: −${selfRoundPoints} Punkte`;
+  } else {
+    els.resultHeadline.textContent = `−${selfRoundPoints} Punkte für dich`;
+  }
   els.resultCountry.textContent = payload.target.capital
     ? `${payload.target.name} · Ziel: ${payload.target.capital}`
     : payload.target.name;
   els.resultDistances.innerHTML = payload.guesses.map((guess) => {
     const who = guess.playerId === state.playerId ? 'Du' : escapeHtml(guess.name);
     const distance = Number.isFinite(guess.distanceKm) ? formatDistance(guess.distanceKm) : 'Kein Tipp';
-    return `<div class="distance-row"><span>${who}</span><strong>${distance}</strong></div>`;
+    const points = Number(guess.roundPoints || 0);
+    const pointsText = points > 0 ? `−${points.toLocaleString('de-DE')} Pkt` : '0 Pkt';
+    return `<div class="distance-row"><span>${who}</span><strong>${distance} · ${pointsText}</strong></div>`;
   }).join('');
   els.roundResult.classList.remove('hidden');
 
@@ -338,8 +346,8 @@ function showRoundResult(payload) {
   clearInterval(state.resultCountdownTimer);
   const updateResultCountdown = () => {
     const seconds = Math.max(0, Math.ceil((revealEndsAt - Date.now()) / 1000));
-    els.resultCountdown.textContent = payload.isLastRound
-      ? `Match-Auswertung in ${seconds}s`
+    els.resultCountdown.textContent = payload.matchEnded
+      ? `Match endet in ${seconds}s`
       : `Nächste Runde in ${seconds}s`;
   };
   updateResultCountdown();
@@ -421,7 +429,7 @@ function showRoundResult(payload) {
   clearTimeout(state.resultTimer);
   state.resultTimer = setTimeout(() => {
     clearInterval(state.resultCountdownTimer);
-    if (!payload.isLastRound) els.roundResult.classList.add('hidden');
+    if (!payload.matchEnded) els.roundResult.classList.add('hidden');
   }, payload.nextRoundInMs + 100);
 }
 
@@ -447,7 +455,11 @@ function showGameOver(payload) {
   if (payload.reason === 'opponent-disconnected' && selfWon) {
     els.gameOverNote.textContent = 'Dein Gegner hat die Verbindung nicht wiederhergestellt.';
   } else {
-    els.gameOverNote.textContent = draw ? 'Ihr wart exakt gleichauf.' : selfWon ? 'Mehr Runden gingen an dich.' : 'Im Rematch kannst du zurückschlagen.';
+    els.gameOverNote.textContent = draw
+      ? 'Ihr habt 0 gleichzeitig mit exakt gleicher Distanz erreicht.'
+      : selfWon
+        ? 'Du hast deine 5000 Restpunkte zuerst auf 0 gespielt.'
+        : 'Dein Gegner hat seine 5000 Restpunkte zuerst auf 0 gespielt.';
   }
   els.rematchButton.disabled = false;
   els.rematchButton.textContent = 'Rematch';
