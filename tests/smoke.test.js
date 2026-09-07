@@ -28,6 +28,13 @@ test('two players can create, join and resolve a round', async (t) => {
     disconnectGraceMs: 100,
   });
 
+  assert.ok(game.debug.playableCountries.length >= 100);
+  assert.ok(game.debug.playableCountries.every((country) => (
+    typeof country.capital === 'string'
+    && Number.isFinite(country.lat)
+    && Number.isFinite(country.lng)
+  )));
+
   await new Promise((resolve) => game.httpServer.listen(0, '127.0.0.1', resolve));
   const port = game.httpServer.address().port;
   const url = `http://127.0.0.1:${port}`;
@@ -80,6 +87,9 @@ test('two players can create, join and resolve a round', async (t) => {
   const result = await resultA;
   assert.equal(result.guesses.length, 2);
   assert.equal(typeof result.target.name, 'string');
+  assert.equal(typeof result.target.capital, 'string');
+  assert.ok(Number.isFinite(result.target.lat));
+  assert.ok(Number.isFinite(result.target.lng));
   assert.equal(result.isLastRound, true);
   assert.ok(result.guesses.every((guess) => Number.isFinite(guess.distanceKm)));
 

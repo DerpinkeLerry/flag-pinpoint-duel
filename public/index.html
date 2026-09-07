@@ -22,7 +22,7 @@
             <h1>FLAG <span>PINPOINT</span></h1>
           </div>
         </div>
-        <p class="hero-copy">Erkenne die Flagge. Setze deinen Pin auf der Weltkarte. Wer näher am richtigen Land liegt, holt die Runde.</p>
+        <p class="hero-copy">Erkenne die Flagge. Setze deinen Pin möglichst auf die Hauptstadt des Landes. Wer näher am Hauptstadt-Ziel liegt, holt die Runde.</p>
 
         <label class="field-label" for="playerName">Dein Name</label>
         <input id="playerName" class="text-input" maxlength="18" autocomplete="nickname" placeholder="z. B. AtlasKing" />
@@ -86,12 +86,12 @@
 
       <div id="map" class="world-map" aria-label="Interaktive Weltkarte"></div>
 
-      <div id="mapHint" class="map-hint glass">Klicke auf die Karte, um deinen Pin zu setzen</div>
+      <div id="mapHint" class="map-hint glass">Tippe auf die Hauptstadt des Landes</div>
 
       <aside id="flagDock" class="flag-dock glass">
         <div class="flag-copy">
           <span class="hud-label">WOHER KOMMT DIESE FLAGGE?</span>
-          <span id="guessState" class="guess-state">Pin setzen</span>
+          <span id="guessState" class="guess-state">Ziel: Hauptstadt</span>
         </div>
         <div class="flag-frame">
           <img id="flagImage" alt="Zu erratende Flagge" />
@@ -106,6 +106,7 @@
         <h2 id="resultHeadline">Punkt für dich!</h2>
         <p id="resultCountry" class="result-country">Deutschland</p>
         <div id="resultDistances" class="result-distances"></div>
+        <p id="resultCountdown" class="result-countdown">Nächste Runde in 9s</p>
         <div class="next-round-track"><span id="nextRoundProgress"></span></div>
       </section>
 

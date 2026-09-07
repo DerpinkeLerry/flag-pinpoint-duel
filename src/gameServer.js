@@ -7,19 +7,22 @@ const path = require('path');
 const express = require('express');
 const { Server } = require('socket.io');
 const countries = require('world-countries');
+const { CAPITAL_COORDINATES } = require('./capitals');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const LEAFLET_DIR = path.dirname(require.resolve('leaflet/package.json'));
 const FLAG_ICONS_DIR = path.join(path.dirname(require.resolve('flag-icons/package.json')), 'flags', '4x3');
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_LENGTH = 6;
+const MIN_STANDARD_POPULATION = 2000000;
+const FEATURED_SMALL_COUNTRY_CODES = new Set(['CY', 'EE', 'IS', 'LV', 'LU', 'MT', 'ME', 'MK']);
 
 function createGameServer(options = {}) {
   const config = {
     totalRounds: options.totalRounds ?? 5,
     roundStartDelayMs: options.roundStartDelayMs ?? 1200,
     roundDurationMs: options.roundDurationMs ?? 22000,
-    revealDurationMs: options.revealDurationMs ?? 5000,
+    revealDurationMs: options.revealDurationMs ?? 9000,
     disconnectGraceMs: options.disconnectGraceMs ?? 30000,
   };
 
@@ -37,18 +40,25 @@ function createGameServer(options = {}) {
 
   const playableCountries = countries
     .filter((country) => country.independent === true)
-    .filter((country) => Array.isArray(country.latlng) && country.latlng.length === 2)
+    .filter((country) => Array.isArray(country.capital) && country.capital.length > 0)
     .filter((country) => /^[A-Z]{2}$/.test(country.cca2 || ''))
+    .filter((country) => Array.isArray(CAPITAL_COORDINATES[country.cca2]))
+    .filter((country) => Number(country.population || 0) >= MIN_STANDARD_POPULATION
+      || FEATURED_SMALL_COUNTRY_CODES.has(country.cca2))
     .filter((country) => fs.existsSync(path.join(FLAG_ICONS_DIR, `${country.cca2.toLowerCase()}.svg`)))
-    .map((country) => ({
-      code: country.cca2.toLowerCase(),
-      name: country.translations?.deu?.common || country.name.common,
-      lat: Number(country.latlng[0]),
-      lng: Number(country.latlng[1]),
-    }));
+    .map((country) => {
+      const [lat, lng] = CAPITAL_COORDINATES[country.cca2];
+      return {
+        code: country.cca2.toLowerCase(),
+        name: country.translations?.deu?.common || country.name.common,
+        capital: country.capital[0],
+        lat,
+        lng,
+      };
+    });
 
-  if (playableCountries.length < 150) {
-    throw new Error(`Only ${playableCountries.length} playable countries were found; flag data seems incomplete.`);
+  if (playableCountries.length < 100) {
+    throw new Error(`Only ${playableCountries.length} playable countries were found; flag/capital data seems incomplete.`);
   }
 
   app.disable('x-powered-by');
@@ -337,6 +347,7 @@ function createGameServer(options = {}) {
       roundNumber: room.roundIndex + 1,
       target: {
         name: room.target.name,
+        capital: room.target.capital,
         lat: room.target.lat,
         lng: room.target.lng,
       },

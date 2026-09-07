@@ -10,8 +10,11 @@ Ein komplettes 1-gegen-1-Flaggen-Spiel für den Browser. Ein Spieler erstellt ei
 - Große interaktive Weltkarte mit Leaflet + OpenStreetMap
 - Pin setzen und Tipp verbindlich abgeben
 - Distanzberechnung ausschließlich auf dem Server (Haversine)
-- Rundensieger ist der Spieler mit der kleineren Distanz zum Länderzentrum
-- Live-Score, Ergebnisansicht, richtige Position und Verbindungslinien
+- Rundensieger ist der Spieler mit der kleineren Distanz zur Hauptstadt des Landes
+- Hauptstadt-Zielpunkte mit festen Stadtkoordinaten statt ungefährem Ländermittelpunkt
+- Leichterer Flaggen-Pool: sehr kleine/obskure Staaten werden weitgehend ausgefiltert
+- 9 Sekunden Reveal-Zeit mit sichtbaren Spieler-Pins, Hauptstadt-Ziel und Verbindungslinien
+- Live-Score und Ergebnisbox in der Kartenecke statt ueber den Pins
 - Rematch ohne neue Lobby
 - Reconnect-Fenster bei kurzen Verbindungsabbrüchen
 - Mobil- und Desktop-Layout
@@ -71,6 +74,7 @@ flag-guessing-game/
 │   ├── index.html      # Screens für Home, Lobby, Spiel und Ergebnis
 │   └── styles.css      # Responsive Design
 ├── src/
+│   ├── capitals.js     # Hauptstadt-Koordinaten für die Spielziele
 │   └── gameServer.js   # Express, Socket.IO, Lobbys, Runden, Scoring
 ├── tests/
 │   └── smoke.test.js   # Multiplayer-Smoke-Test

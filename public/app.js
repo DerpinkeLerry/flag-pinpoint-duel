@@ -36,6 +36,7 @@ const els = {
   resultCountry: document.getElementById('resultCountry'),
   resultDistances: document.getElementById('resultDistances'),
   nextRoundProgress: document.getElementById('nextRoundProgress'),
+  resultCountdown: document.getElementById('resultCountdown'),
   gameOverModal: document.getElementById('gameOverModal'),
   gameOverTitle: document.getElementById('gameOverTitle'),
   gameOverScore: document.getElementById('gameOverScore'),
@@ -60,6 +61,7 @@ const state = {
   roundDuration: 22000,
   timerInterval: null,
   resultTimer: null,
+  resultCountdownTimer: null,
   currentScreen: 'home',
 };
 
@@ -228,8 +230,8 @@ function clearMapRound() {
   state.pendingGuess = null;
   state.submitted = false;
   els.submitGuessButton.disabled = true;
-  els.guessState.textContent = 'Pin setzen';
-  els.mapHint.textContent = 'Klicke auf die Karte, um deinen Pin zu setzen';
+  els.guessState.textContent = 'Ziel: Hauptstadt';
+  els.mapHint.textContent = 'Tippe auf die Hauptstadt des Landes';
   state.map.setView([18, 0], 2, { animate: true });
 }
 
@@ -238,6 +240,7 @@ function startRound(payload, { synced = false } = {}) {
   els.gameOverModal.classList.add('hidden');
   els.roundResult.classList.add('hidden');
   clearTimeout(state.resultTimer);
+  clearInterval(state.resultCountdownTimer);
   clearMapRound();
   els.flagImage.src = payload.flagUrl;
   els.roundLabel.textContent = `Runde ${payload.roundNumber}/${payload.totalRounds}`;
@@ -321,13 +324,27 @@ function showRoundResult(payload) {
   const isDraw = !payload.winnerId;
   const selfWon = payload.winnerId === state.playerId;
   els.resultHeadline.textContent = isDraw ? 'Unentschieden' : selfWon ? 'Punkt für dich!' : 'Punkt für den Gegner';
-  els.resultCountry.textContent = payload.target.name;
+  els.resultCountry.textContent = payload.target.capital
+    ? `${payload.target.name} · Ziel: ${payload.target.capital}`
+    : payload.target.name;
   els.resultDistances.innerHTML = payload.guesses.map((guess) => {
     const who = guess.playerId === state.playerId ? 'Du' : escapeHtml(guess.name);
     const distance = Number.isFinite(guess.distanceKm) ? formatDistance(guess.distanceKm) : 'Kein Tipp';
     return `<div class="distance-row"><span>${who}</span><strong>${distance}</strong></div>`;
   }).join('');
   els.roundResult.classList.remove('hidden');
+
+  const revealEndsAt = Date.now() + Number(payload.nextRoundInMs || 0);
+  clearInterval(state.resultCountdownTimer);
+  const updateResultCountdown = () => {
+    const seconds = Math.max(0, Math.ceil((revealEndsAt - Date.now()) / 1000));
+    els.resultCountdown.textContent = payload.isLastRound
+      ? `Match-Auswertung in ${seconds}s`
+      : `Nächste Runde in ${seconds}s`;
+  };
+  updateResultCountdown();
+  state.resultCountdownTimer = setInterval(updateResultCountdown, 200);
+
   els.nextRoundProgress.style.transition = 'none';
   els.nextRoundProgress.style.transform = 'scaleX(1)';
   requestAnimationFrame(() => {
@@ -344,9 +361,13 @@ function showRoundResult(payload) {
       color: '#ffffff',
       fillColor: '#fbbf24',
       fillOpacity: 1,
-    }).addTo(state.map).bindTooltip(`Richtig: ${payload.target.name}`, { permanent: false });
+    }).addTo(state.map).bindTooltip(
+      `Ziel: ${escapeHtml(payload.target.capital || payload.target.name)}${payload.target.capital ? ` · ${escapeHtml(payload.target.name)}` : ''}`,
+      { permanent: true, direction: 'top', className: 'result-map-label target-label', offset: [0, -8] },
+    );
     state.resultLayers.push(targetMarker);
 
+    const guessMarkers = [];
     payload.guesses.forEach((guess) => {
       if (!Number.isFinite(guess.lat) || !Number.isFinite(guess.lng)) return;
       const isSelf = guess.playerId === state.playerId;
@@ -356,21 +377,37 @@ function showRoundResult(payload) {
         color: '#ffffff',
         fillColor: isSelf ? '#34d399' : '#60a5fa',
         fillOpacity: 1,
-      }).addTo(state.map).bindTooltip(`${isSelf ? 'Du' : guess.name}: ${formatDistance(guess.distanceKm)}`);
+      }).addTo(state.map).bindTooltip(
+        `${isSelf ? 'Du' : escapeHtml(guess.name)} · ${formatDistance(guess.distanceKm)}`,
+        { permanent: true, direction: 'top', className: `result-map-label ${isSelf ? 'self-label' : 'opponent-label'}`, offset: [0, -7] },
+      );
       const line = L.polyline([[guess.lat, guess.lng], [payload.target.lat, payload.target.lng]], {
         weight: 2,
         opacity: .68,
         dashArray: '5 7',
         color: isSelf ? '#34d399' : '#60a5fa',
       }).addTo(state.map);
+      guessMarkers.push(marker);
       state.resultLayers.push(marker, line);
     });
+    targetMarker.bringToFront();
+    guessMarkers.forEach((marker) => marker.bringToFront());
 
     const points = [[payload.target.lat, payload.target.lng]];
     [selfGuess, opponentGuess].forEach((guess) => {
       if (Number.isFinite(guess?.lat) && Number.isFinite(guess?.lng)) points.push([guess.lat, guess.lng]);
     });
-    if (points.length > 1) state.map.fitBounds(points, { padding: [95, 95], maxZoom: 4, animate: true });
+    if (points.length > 1) {
+      const mobile = window.matchMedia('(max-width: 700px)').matches;
+      state.map.fitBounds(points, {
+        paddingTopLeft: mobile ? [36, 105] : [90, 110],
+        paddingBottomRight: mobile ? [225, 125] : [365, 145],
+        maxZoom: mobile ? 3.4 : 4.2,
+        animate: true,
+      });
+    } else {
+      state.map.setView([payload.target.lat, payload.target.lng], 4, { animate: true });
+    }
   }
 
   if (state.room) {
@@ -383,6 +420,7 @@ function showRoundResult(payload) {
 
   clearTimeout(state.resultTimer);
   state.resultTimer = setTimeout(() => {
+    clearInterval(state.resultCountdownTimer);
     if (!payload.isLastRound) els.roundResult.classList.add('hidden');
   }, payload.nextRoundInMs + 100);
 }
@@ -395,6 +433,7 @@ function formatDistance(km) {
 
 function showGameOver(payload) {
   clearInterval(state.timerInterval);
+  clearInterval(state.resultCountdownTimer);
   state.roundDeadline = 0;
   els.roundResult.classList.add('hidden');
   els.gameOverModal.classList.remove('hidden');
