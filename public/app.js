@@ -1,0 +1,515 @@
+/* global io, L */
+'use strict';
+
+const socket = io({ transports: ['websocket', 'polling'] });
+
+const els = {
+  homeScreen: document.getElementById('homeScreen'),
+  lobbyScreen: document.getElementById('lobbyScreen'),
+  gameScreen: document.getElementById('gameScreen'),
+  playerName: document.getElementById('playerName'),
+  roomCodeInput: document.getElementById('roomCodeInput'),
+  createRoomButton: document.getElementById('createRoomButton'),
+  joinRoomButton: document.getElementById('joinRoomButton'),
+  homeError: document.getElementById('homeError'),
+  lobbyCode: document.getElementById('lobbyCode'),
+  lobbyPlayers: document.getElementById('lobbyPlayers'),
+  lobbyStatus: document.getElementById('lobbyStatus'),
+  copyCodeButton: document.getElementById('copyCodeButton'),
+  copyLinkButton: document.getElementById('copyLinkButton'),
+  leaveLobbyButton: document.getElementById('leaveLobbyButton'),
+  hudRoomCode: document.getElementById('hudRoomCode'),
+  selfName: document.getElementById('selfName'),
+  selfScore: document.getElementById('selfScore'),
+  opponentName: document.getElementById('opponentName'),
+  opponentScore: document.getElementById('opponentScore'),
+  roundLabel: document.getElementById('roundLabel'),
+  timerText: document.getElementById('timerText'),
+  timerRingProgress: document.getElementById('timerRingProgress'),
+  timerWrap: document.querySelector('.timer-wrap'),
+  mapHint: document.getElementById('mapHint'),
+  flagImage: document.getElementById('flagImage'),
+  guessState: document.getElementById('guessState'),
+  submitGuessButton: document.getElementById('submitGuessButton'),
+  roundResult: document.getElementById('roundResult'),
+  resultHeadline: document.getElementById('resultHeadline'),
+  resultCountry: document.getElementById('resultCountry'),
+  resultDistances: document.getElementById('resultDistances'),
+  nextRoundProgress: document.getElementById('nextRoundProgress'),
+  gameOverModal: document.getElementById('gameOverModal'),
+  gameOverTitle: document.getElementById('gameOverTitle'),
+  gameOverScore: document.getElementById('gameOverScore'),
+  gameOverNote: document.getElementById('gameOverNote'),
+  rematchButton: document.getElementById('rematchButton'),
+  backHomeButton: document.getElementById('backHomeButton'),
+  rematchStatus: document.getElementById('rematchStatus'),
+  connectionBadge: document.getElementById('connectionBadge'),
+  toast: document.getElementById('toast'),
+};
+
+const state = {
+  playerId: getOrCreatePlayerId(),
+  roomCode: null,
+  room: null,
+  map: null,
+  ownMarker: null,
+  resultLayers: [],
+  pendingGuess: null,
+  submitted: false,
+  roundDeadline: 0,
+  roundDuration: 22000,
+  timerInterval: null,
+  resultTimer: null,
+  currentScreen: 'home',
+};
+
+function getOrCreatePlayerId() {
+  let id = localStorage.getItem('flagDuelPlayerId');
+  if (!id) {
+    id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9_-]/g, '');
+    localStorage.setItem('flagDuelPlayerId', id);
+  }
+  return id;
+}
+
+els.playerName.value = localStorage.getItem('flagDuelName') || '';
+const inviteCode = new URLSearchParams(location.search).get('room');
+if (inviteCode) els.roomCodeInput.value = inviteCode.toUpperCase().slice(0, 6);
+
+function setScreen(name) {
+  state.currentScreen = name;
+  els.homeScreen.classList.toggle('hidden', name !== 'home');
+  els.lobbyScreen.classList.toggle('hidden', name !== 'lobby');
+  els.gameScreen.classList.toggle('hidden', name !== 'game');
+  if (name === 'game') {
+    ensureMap();
+    setTimeout(() => state.map?.invalidateSize(), 80);
+  }
+}
+
+function getName() {
+  const name = els.playerName.value.trim().slice(0, 18) || 'Spieler';
+  localStorage.setItem('flagDuelName', name);
+  return name;
+}
+
+function showError(message = '') {
+  els.homeError.textContent = message;
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.remove('hidden');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => els.toast.classList.add('hidden'), 2200);
+}
+
+function emitAck(event, payload) {
+  return new Promise((resolve) => {
+    socket.emit(event, payload, (response) => resolve(response || { ok: false, error: 'Keine Serverantwort.' }));
+  });
+}
+
+async function createRoom() {
+  showError('');
+  els.createRoomButton.disabled = true;
+  const response = await emitAck('create-room', { playerId: state.playerId, name: getName() });
+  els.createRoomButton.disabled = false;
+  if (!response.ok) return showError(response.error || 'Lobby konnte nicht erstellt werden.');
+  state.roomCode = response.roomCode;
+  history.replaceState(null, '', `?room=${encodeURIComponent(response.roomCode)}`);
+  setScreen('lobby');
+}
+
+async function joinRoom() {
+  showError('');
+  const roomCode = els.roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  if (roomCode.length !== 6) return showError('Bitte einen 6-stelligen Lobby-Code eingeben.');
+  els.joinRoomButton.disabled = true;
+  const response = await emitAck('join-room', { playerId: state.playerId, name: getName(), roomCode });
+  els.joinRoomButton.disabled = false;
+  if (!response.ok) return showError(response.error || 'Beitritt fehlgeschlagen.');
+  state.roomCode = response.roomCode;
+  history.replaceState(null, '', `?room=${encodeURIComponent(response.roomCode)}`);
+  setScreen('lobby');
+}
+
+function renderLobby(room) {
+  state.room = room;
+  state.roomCode = room.roomCode;
+  els.lobbyCode.textContent = room.roomCode;
+  els.hudRoomCode.textContent = room.roomCode;
+
+  const slots = [...room.players];
+  while (slots.length < 2) slots.push(null);
+  els.lobbyPlayers.innerHTML = slots.map((player, index) => {
+    if (!player) {
+      return `<div class="lobby-player waiting"><div class="player-avatar">?</div><strong>Gegner gesucht…</strong></div>`;
+    }
+    const me = player.id === state.playerId ? ' · Du' : '';
+    const initial = escapeHtml(player.name.charAt(0).toUpperCase() || '?');
+    return `<div class="lobby-player"><div class="player-avatar">${initial}</div><strong>${escapeHtml(player.name)}${me}</strong><small><span class="online-dot"></span>${player.connected ? 'verbunden' : 'Reconnect…'}</small></div>`;
+  }).join('');
+
+  if (room.status === 'waiting') {
+    els.lobbyStatus.textContent = room.players.length === 2 ? 'Gegner gefunden. Spiel startet…' : 'Lobby ist offen…';
+  }
+  updateScores(room.players);
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+}
+
+function updateScores(players = state.room?.players || []) {
+  const self = players.find((player) => player.id === state.playerId);
+  const opponent = players.find((player) => player.id !== state.playerId);
+  if (self) {
+    els.selfName.textContent = self.name;
+    els.selfScore.textContent = self.score;
+  }
+  if (opponent) {
+    els.opponentName.textContent = opponent.name;
+    els.opponentScore.textContent = opponent.score;
+  }
+}
+
+function ensureMap() {
+  if (state.map) return;
+  state.map = L.map('map', {
+    zoomControl: true,
+    minZoom: 2,
+    maxZoom: 8,
+    worldCopyJump: true,
+    maxBoundsViscosity: .8,
+  }).setView([18, 0], 2);
+  state.map.setMaxBounds([[-85, -190], [85, 190]]);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(state.map);
+
+  state.map.on('click', (event) => {
+    if (state.submitted || !state.roundDeadline || Date.now() >= state.roundDeadline) return;
+    const { lat, lng } = event.latlng;
+    state.pendingGuess = { lat, lng: normalizeLng(lng) };
+    if (!state.ownMarker) {
+      state.ownMarker = L.circleMarker([lat, normalizeLng(lng)], {
+        radius: 9,
+        weight: 4,
+        color: '#ffffff',
+        fillColor: '#34d399',
+        fillOpacity: 1,
+      }).addTo(state.map);
+    } else {
+      state.ownMarker.setLatLng([lat, normalizeLng(lng)]);
+    }
+    els.submitGuessButton.disabled = false;
+    els.guessState.textContent = 'Pin gesetzt – noch nicht gesendet';
+    els.mapHint.textContent = 'Pin verschieben oder Tipp abgeben';
+  });
+}
+
+function normalizeLng(lng) {
+  let value = lng;
+  while (value > 180) value -= 360;
+  while (value < -180) value += 360;
+  return value;
+}
+
+function clearMapRound() {
+  if (state.ownMarker) {
+    state.map.removeLayer(state.ownMarker);
+    state.ownMarker = null;
+  }
+  state.resultLayers.forEach((layer) => state.map.removeLayer(layer));
+  state.resultLayers = [];
+  state.pendingGuess = null;
+  state.submitted = false;
+  els.submitGuessButton.disabled = true;
+  els.guessState.textContent = 'Pin setzen';
+  els.mapHint.textContent = 'Klicke auf die Karte, um deinen Pin zu setzen';
+  state.map.setView([18, 0], 2, { animate: true });
+}
+
+function startRound(payload, { synced = false } = {}) {
+  setScreen('game');
+  els.gameOverModal.classList.add('hidden');
+  els.roundResult.classList.add('hidden');
+  clearTimeout(state.resultTimer);
+  clearMapRound();
+  els.flagImage.src = payload.flagUrl;
+  els.roundLabel.textContent = `Runde ${payload.roundNumber}/${payload.totalRounds}`;
+  state.roundDeadline = Number(payload.deadline || 0);
+  state.roundDuration = Number(payload.roundDurationMs || 22000);
+  state.submitted = Boolean(payload.hasGuessed);
+  if (payload.guess && Number.isFinite(payload.guess.lat) && Number.isFinite(payload.guess.lng)) {
+    state.pendingGuess = { lat: payload.guess.lat, lng: payload.guess.lng };
+    state.ownMarker = L.circleMarker([payload.guess.lat, payload.guess.lng], {
+      radius: 9,
+      weight: 4,
+      color: '#ffffff',
+      fillColor: '#60a5fa',
+      fillOpacity: 1,
+    }).addTo(state.map);
+  }
+  if (state.submitted) {
+    els.submitGuessButton.disabled = true;
+    els.guessState.textContent = 'Tipp ist abgegeben';
+    els.mapHint.textContent = 'Warte auf deinen Gegner…';
+  }
+  startTimer();
+  if (!synced) showToast(`Runde ${payload.roundNumber} startet`);
+}
+
+function startTimer() {
+  clearInterval(state.timerInterval);
+  const circumference = 2 * Math.PI * 18;
+  function update() {
+    if (!state.roundDeadline) return;
+    const remaining = Math.max(0, state.roundDeadline - Date.now());
+    const seconds = Math.ceil(remaining / 1000);
+    const ratio = Math.max(0, Math.min(1, remaining / state.roundDuration));
+    els.timerText.textContent = seconds;
+    els.timerRingProgress.style.strokeDashoffset = String(circumference * (1 - ratio));
+    els.timerWrap.classList.toggle('danger', seconds <= 5);
+    if (remaining <= 0) {
+      clearInterval(state.timerInterval);
+      state.submitted = true;
+      els.submitGuessButton.disabled = true;
+      els.guessState.textContent = state.pendingGuess ? 'Zeit abgelaufen' : 'Kein Tipp abgegeben';
+      els.mapHint.textContent = 'Runde wird ausgewertet…';
+    }
+  }
+  update();
+  state.timerInterval = setInterval(update, 120);
+}
+
+async function submitGuess() {
+  if (!state.pendingGuess || state.submitted) return;
+  els.submitGuessButton.disabled = true;
+  const response = await emitAck('submit-guess', {
+    playerId: state.playerId,
+    roomCode: state.roomCode,
+    lat: state.pendingGuess.lat,
+    lng: state.pendingGuess.lng,
+  });
+  if (!response.ok) {
+    showToast(response.error || 'Tipp konnte nicht gesendet werden.');
+    if (Date.now() < state.roundDeadline) els.submitGuessButton.disabled = false;
+    return;
+  }
+  state.submitted = true;
+  els.guessState.textContent = 'Tipp ist abgegeben';
+  els.mapHint.textContent = 'Warte auf deinen Gegner…';
+  if (state.ownMarker) state.ownMarker.setStyle({ fillColor: '#60a5fa' });
+}
+
+function showRoundResult(payload) {
+  clearInterval(state.timerInterval);
+  if (state.ownMarker && state.map) {
+    state.map.removeLayer(state.ownMarker);
+    state.ownMarker = null;
+  }
+  state.roundDeadline = 0;
+  els.submitGuessButton.disabled = true;
+  els.flagImage.removeAttribute('src');
+
+  const selfGuess = payload.guesses.find((guess) => guess.playerId === state.playerId);
+  const opponentGuess = payload.guesses.find((guess) => guess.playerId !== state.playerId);
+  const isDraw = !payload.winnerId;
+  const selfWon = payload.winnerId === state.playerId;
+  els.resultHeadline.textContent = isDraw ? 'Unentschieden' : selfWon ? 'Punkt für dich!' : 'Punkt für den Gegner';
+  els.resultCountry.textContent = payload.target.name;
+  els.resultDistances.innerHTML = payload.guesses.map((guess) => {
+    const who = guess.playerId === state.playerId ? 'Du' : escapeHtml(guess.name);
+    const distance = Number.isFinite(guess.distanceKm) ? formatDistance(guess.distanceKm) : 'Kein Tipp';
+    return `<div class="distance-row"><span>${who}</span><strong>${distance}</strong></div>`;
+  }).join('');
+  els.roundResult.classList.remove('hidden');
+  els.nextRoundProgress.style.transition = 'none';
+  els.nextRoundProgress.style.transform = 'scaleX(1)';
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      els.nextRoundProgress.style.transition = `transform ${payload.nextRoundInMs}ms linear`;
+      els.nextRoundProgress.style.transform = 'scaleX(0)';
+    });
+  });
+
+  if (state.map) {
+    const targetMarker = L.circleMarker([payload.target.lat, payload.target.lng], {
+      radius: 10,
+      weight: 4,
+      color: '#ffffff',
+      fillColor: '#fbbf24',
+      fillOpacity: 1,
+    }).addTo(state.map).bindTooltip(`Richtig: ${payload.target.name}`, { permanent: false });
+    state.resultLayers.push(targetMarker);
+
+    payload.guesses.forEach((guess) => {
+      if (!Number.isFinite(guess.lat) || !Number.isFinite(guess.lng)) return;
+      const isSelf = guess.playerId === state.playerId;
+      const marker = L.circleMarker([guess.lat, guess.lng], {
+        radius: 8,
+        weight: 3,
+        color: '#ffffff',
+        fillColor: isSelf ? '#34d399' : '#60a5fa',
+        fillOpacity: 1,
+      }).addTo(state.map).bindTooltip(`${isSelf ? 'Du' : guess.name}: ${formatDistance(guess.distanceKm)}`);
+      const line = L.polyline([[guess.lat, guess.lng], [payload.target.lat, payload.target.lng]], {
+        weight: 2,
+        opacity: .68,
+        dashArray: '5 7',
+        color: isSelf ? '#34d399' : '#60a5fa',
+      }).addTo(state.map);
+      state.resultLayers.push(marker, line);
+    });
+
+    const points = [[payload.target.lat, payload.target.lng]];
+    [selfGuess, opponentGuess].forEach((guess) => {
+      if (Number.isFinite(guess?.lat) && Number.isFinite(guess?.lng)) points.push([guess.lat, guess.lng]);
+    });
+    if (points.length > 1) state.map.fitBounds(points, { padding: [95, 95], maxZoom: 4, animate: true });
+  }
+
+  if (state.room) {
+    payload.scores.forEach((score) => {
+      const player = state.room.players.find((p) => p.id === score.playerId);
+      if (player) player.score = score.score;
+    });
+    updateScores(state.room.players);
+  }
+
+  clearTimeout(state.resultTimer);
+  state.resultTimer = setTimeout(() => {
+    if (!payload.isLastRound) els.roundResult.classList.add('hidden');
+  }, payload.nextRoundInMs + 100);
+}
+
+function formatDistance(km) {
+  if (!Number.isFinite(km)) return 'Kein Tipp';
+  if (km < 10) return `${km.toFixed(1).replace('.', ',')} km`;
+  return `${Math.round(km).toLocaleString('de-DE')} km`;
+}
+
+function showGameOver(payload) {
+  clearInterval(state.timerInterval);
+  state.roundDeadline = 0;
+  els.roundResult.classList.add('hidden');
+  els.gameOverModal.classList.remove('hidden');
+  const self = payload.scores.find((score) => score.playerId === state.playerId);
+  const opponent = payload.scores.find((score) => score.playerId !== state.playerId);
+  const selfWon = payload.winnerId === state.playerId;
+  const draw = !payload.winnerId;
+
+  els.gameOverTitle.textContent = draw ? 'Unentschieden!' : selfWon ? 'Du gewinnst!' : 'Gegner gewinnt';
+  els.gameOverScore.textContent = `${self?.score ?? 0} : ${opponent?.score ?? 0}`;
+  if (payload.reason === 'opponent-disconnected' && selfWon) {
+    els.gameOverNote.textContent = 'Dein Gegner hat die Verbindung nicht wiederhergestellt.';
+  } else {
+    els.gameOverNote.textContent = draw ? 'Ihr wart exakt gleichauf.' : selfWon ? 'Mehr Runden gingen an dich.' : 'Im Rematch kannst du zurückschlagen.';
+  }
+  els.rematchButton.disabled = false;
+  els.rematchButton.textContent = 'Rematch';
+  els.rematchStatus.textContent = '';
+}
+
+async function copyText(text, message) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(message);
+  } catch {
+    showToast('Kopieren nicht möglich – bitte manuell markieren.');
+  }
+}
+
+function inviteUrl() {
+  return `${location.origin}${location.pathname}?room=${encodeURIComponent(state.roomCode || '')}`;
+}
+
+async function leaveRoom() {
+  if (state.roomCode) {
+    await emitAck('leave-room', { playerId: state.playerId });
+  }
+  resetHome();
+}
+
+function resetHome() {
+  state.roomCode = null;
+  state.room = null;
+  state.roundDeadline = 0;
+  clearInterval(state.timerInterval);
+  clearTimeout(state.resultTimer);
+  els.gameOverModal.classList.add('hidden');
+  els.roundResult.classList.add('hidden');
+  history.replaceState(null, '', location.pathname);
+  setScreen('home');
+}
+
+els.createRoomButton.addEventListener('click', createRoom);
+els.joinRoomButton.addEventListener('click', joinRoom);
+els.roomCodeInput.addEventListener('input', () => {
+  els.roomCodeInput.value = els.roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+});
+els.roomCodeInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') joinRoom(); });
+els.playerName.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !els.roomCodeInput.value) createRoom(); });
+els.copyCodeButton.addEventListener('click', () => copyText(state.roomCode || '', 'Lobby-Code kopiert'));
+els.copyLinkButton.addEventListener('click', () => copyText(inviteUrl(), 'Einladungslink kopiert'));
+els.leaveLobbyButton.addEventListener('click', leaveRoom);
+els.submitGuessButton.addEventListener('click', submitGuess);
+els.backHomeButton.addEventListener('click', leaveRoom);
+els.rematchButton.addEventListener('click', async () => {
+  els.rematchButton.disabled = true;
+  els.rematchButton.textContent = 'Warte auf Gegner…';
+  const response = await emitAck('request-rematch', { playerId: state.playerId, roomCode: state.roomCode });
+  if (!response.ok) {
+    els.rematchButton.disabled = false;
+    els.rematchButton.textContent = 'Rematch';
+    showToast(response.error || 'Rematch nicht möglich.');
+  }
+});
+
+socket.on('connect', async () => {
+  els.connectionBadge.classList.add('hidden');
+  await emitAck('hello', { playerId: state.playerId });
+});
+socket.on('disconnect', () => {
+  if (state.currentScreen !== 'home') els.connectionBadge.classList.remove('hidden');
+});
+socket.on('connect_error', () => {
+  if (state.currentScreen !== 'home') els.connectionBadge.classList.remove('hidden');
+});
+
+socket.on('state-sync', (payload) => {
+  if (!payload?.room) return;
+  state.roomCode = payload.room.roomCode;
+  renderLobby(payload.room);
+  if (payload.room.status === 'waiting') setScreen('lobby');
+  else if (payload.room.status === 'playing') {
+    setScreen('game');
+    if (payload.round) startRound(payload.round, { synced: true });
+    else if (payload.roundResult) showRoundResult(payload.roundResult);
+  } else if (payload.room.status === 'ended') {
+    setScreen('game');
+    if (payload.gameOver) showGameOver(payload.gameOver);
+  }
+});
+
+socket.on('lobby-update', (room) => {
+  renderLobby(room);
+  if (room.status === 'waiting' && state.currentScreen !== 'home') setScreen('lobby');
+});
+
+socket.on('round-start', (payload) => startRound(payload));
+socket.on('guess-status', (payload) => {
+  if (payload.playerId !== state.playerId && state.submitted) {
+    els.mapHint.textContent = 'Beide Tipps sind da – Auswertung…';
+  }
+});
+socket.on('round-result', showRoundResult);
+socket.on('game-over', showGameOver);
+socket.on('rematch-status', (payload) => {
+  const selfReady = payload.ready.includes(state.playerId);
+  els.rematchStatus.textContent = payload.ready.length === 2 ? 'Beide bereit – neues Match startet…' : selfReady ? 'Du bist bereit. Warte auf deinen Gegner…' : '';
+});

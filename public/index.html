@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0f18" />
+  <meta name="description" content="Flag Pinpoint Duel – 1v1 Flaggen erraten und auf der Weltkarte pinpointen." />
+  <title>Flag Pinpoint Duel</title>
+  <link rel="stylesheet" href="/vendor/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main id="app">
+    <section id="homeScreen" class="screen home-screen">
+      <div class="ambient ambient-a"></div>
+      <div class="ambient ambient-b"></div>
+      <div class="home-card glass">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">◎</div>
+          <div>
+            <p class="eyebrow">1 VS 1 · LIVE</p>
+            <h1>FLAG <span>PINPOINT</span></h1>
+          </div>
+        </div>
+        <p class="hero-copy">Erkenne die Flagge. Setze deinen Pin auf der Weltkarte. Wer näher am richtigen Land liegt, holt die Runde.</p>
+
+        <label class="field-label" for="playerName">Dein Name</label>
+        <input id="playerName" class="text-input" maxlength="18" autocomplete="nickname" placeholder="z. B. AtlasKing" />
+
+        <button id="createRoomButton" class="button button-primary button-large">Lobby erstellen</button>
+
+        <div class="divider"><span>oder Lobby beitreten</span></div>
+
+        <div class="join-row">
+          <input id="roomCodeInput" class="text-input code-input" maxlength="6" autocomplete="off" placeholder="ABC123" aria-label="Lobby-Code" />
+          <button id="joinRoomButton" class="button button-secondary">Beitreten</button>
+        </div>
+        <p id="homeError" class="form-error" role="alert"></p>
+      </div>
+      <p class="home-note">5 Runden · 22 Sekunden pro Flagge · kein Account nötig</p>
+    </section>
+
+    <section id="lobbyScreen" class="screen lobby-screen hidden">
+      <div class="ambient ambient-a"></div>
+      <div class="lobby-card glass">
+        <p class="eyebrow">PRIVATE LOBBY</p>
+        <h2>Warte auf deinen Gegner</h2>
+        <p class="muted">Teile den Code oder kopiere den Einladungslink.</p>
+        <button id="copyCodeButton" class="room-code" title="Code kopieren"><span id="lobbyCode">------</span><small>KOPIEREN</small></button>
+
+        <div id="lobbyPlayers" class="lobby-players"></div>
+
+        <div class="lobby-actions">
+          <button id="copyLinkButton" class="button button-primary">Einladungslink kopieren</button>
+          <button id="leaveLobbyButton" class="button button-ghost">Lobby verlassen</button>
+        </div>
+        <p id="lobbyStatus" class="lobby-status">Lobby ist offen…</p>
+      </div>
+    </section>
+
+    <section id="gameScreen" class="screen game-screen hidden">
+      <header class="game-hud glass">
+        <div class="hud-room">
+          <span class="hud-label">LOBBY</span>
+          <strong id="hudRoomCode">------</strong>
+        </div>
+        <div class="score-board">
+          <div id="selfScoreCard" class="score-player is-self">
+            <span id="selfName">Du</span>
+            <strong id="selfScore">0</strong>
+          </div>
+          <div class="round-chip"><span id="roundLabel">Runde 1/5</span></div>
+          <div id="opponentScoreCard" class="score-player">
+            <strong id="opponentScore">0</strong>
+            <span id="opponentName">Gegner</span>
+          </div>
+        </div>
+        <div class="timer-wrap" aria-label="Verbleibende Zeit">
+          <span id="timerText">22</span>
+          <svg class="timer-ring" viewBox="0 0 44 44" aria-hidden="true">
+            <circle class="timer-ring-bg" cx="22" cy="22" r="18"></circle>
+            <circle id="timerRingProgress" class="timer-ring-progress" cx="22" cy="22" r="18"></circle>
+          </svg>
+        </div>
+      </header>
+
+      <div id="map" class="world-map" aria-label="Interaktive Weltkarte"></div>
+
+      <div id="mapHint" class="map-hint glass">Klicke auf die Karte, um deinen Pin zu setzen</div>
+
+      <aside id="flagDock" class="flag-dock glass">
+        <div class="flag-copy">
+          <span class="hud-label">WOHER KOMMT DIESE FLAGGE?</span>
+          <span id="guessState" class="guess-state">Pin setzen</span>
+        </div>
+        <div class="flag-frame">
+          <img id="flagImage" alt="Zu erratende Flagge" />
+        </div>
+        <button id="submitGuessButton" class="button button-primary submit-button" disabled>Tipp abgeben</button>
+      </aside>
+
+      <div id="connectionBadge" class="connection-badge hidden">Verbindung wird wiederhergestellt…</div>
+
+      <section id="roundResult" class="result-panel glass hidden" aria-live="polite">
+        <p class="eyebrow">RUNDENERGEBNIS</p>
+        <h2 id="resultHeadline">Punkt für dich!</h2>
+        <p id="resultCountry" class="result-country">Deutschland</p>
+        <div id="resultDistances" class="result-distances"></div>
+        <div class="next-round-track"><span id="nextRoundProgress"></span></div>
+      </section>
+
+      <section id="gameOverModal" class="modal-backdrop hidden">
+        <div class="modal-card glass">
+          <p class="eyebrow">MATCH BEENDET</p>
+          <h2 id="gameOverTitle">Du gewinnst!</h2>
+          <p id="gameOverScore" class="final-score">3 : 2</p>
+          <p id="gameOverNote" class="muted">Stark gespielt.</p>
+          <button id="rematchButton" class="button button-primary button-large">Rematch</button>
+          <button id="backHomeButton" class="button button-ghost">Zur Startseite</button>
+          <p id="rematchStatus" class="lobby-status"></p>
+        </div>
+      </section>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/leaflet/dist/leaflet.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
