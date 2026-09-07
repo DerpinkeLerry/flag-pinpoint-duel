@@ -9,17 +9,28 @@ const els = {
   gameScreen: document.getElementById('gameScreen'),
   playerName: document.getElementById('playerName'),
   roomCodeInput: document.getElementById('roomCodeInput'),
+  soloStartButton: document.getElementById('soloStartButton'),
   createRoomButton: document.getElementById('createRoomButton'),
   joinRoomButton: document.getElementById('joinRoomButton'),
+  regionSelect: document.getElementById('regionSelect'),
+  roundTimeSelect: document.getElementById('roundTimeSelect'),
+  startingScoreSelect: document.getElementById('startingScoreSelect'),
+  scoreMultiplierSelect: document.getElementById('scoreMultiplierSelect'),
+  settingsHint: document.getElementById('settingsHint'),
   homeError: document.getElementById('homeError'),
   lobbyCode: document.getElementById('lobbyCode'),
   lobbyPlayers: document.getElementById('lobbyPlayers'),
   lobbyStatus: document.getElementById('lobbyStatus'),
   lobbyModeBadge: document.getElementById('lobbyModeBadge'),
+  lobbySettings: document.getElementById('lobbySettings'),
   copyCodeButton: document.getElementById('copyCodeButton'),
   copyLinkButton: document.getElementById('copyLinkButton'),
   leaveLobbyButton: document.getElementById('leaveLobbyButton'),
+  hudRoomLabel: document.getElementById('hudRoomLabel'),
   hudRoomCode: document.getElementById('hudRoomCode'),
+  scoreBoard: document.getElementById('scoreBoard'),
+  selfScoreCard: document.getElementById('selfScoreCard'),
+  opponentScoreCard: document.getElementById('opponentScoreCard'),
   selfName: document.getElementById('selfName'),
   selfScore: document.getElementById('selfScore'),
   opponentName: document.getElementById('opponentName'),
@@ -86,6 +97,22 @@ if (savedMode === 'globe' || savedMode === 'map') {
   const modeInput = document.querySelector(`input[name="gameMode"][value="${savedMode}"]`);
   if (modeInput) modeInput.checked = true;
 }
+const savedSettings = (() => {
+  try { return JSON.parse(localStorage.getItem('flagDuelSettings') || '{}'); } catch { return {}; }
+})();
+const settingSelects = {
+  region: els.regionSelect,
+  roundTimeSec: els.roundTimeSelect,
+  startingScore: els.startingScoreSelect,
+  scoreMultiplier: els.scoreMultiplierSelect,
+};
+Object.entries(settingSelects).forEach(([key, select]) => {
+  const value = savedSettings[key];
+  if (value == null) return;
+  const option = Array.from(select.options).find((item) => item.value === String(value));
+  if (option) select.value = String(value);
+});
+
 const inviteCode = new URLSearchParams(location.search).get('room');
 if (inviteCode) els.roomCodeInput.value = inviteCode.toUpperCase().slice(0, 6);
 
@@ -93,13 +120,45 @@ function getSelectedMode() {
   return document.querySelector('input[name="gameMode"]:checked')?.value === 'globe' ? 'globe' : 'map';
 }
 
+function getSelectedSettings() {
+  return {
+    region: els.regionSelect.value,
+    roundDurationMs: Number(els.roundTimeSelect.value) * 1000,
+    startingScore: Number(els.startingScoreSelect.value),
+    scoreMultiplier: Number(els.scoreMultiplierSelect.value),
+  };
+}
+
+function saveSelectedSettings() {
+  const settings = getSelectedSettings();
+  localStorage.setItem('flagDuelSettings', JSON.stringify({
+    region: settings.region,
+    roundTimeSec: settings.roundDurationMs / 1000,
+    startingScore: settings.startingScore,
+    scoreMultiplier: settings.scoreMultiplier,
+  }));
+  const maxPoints = Math.round(1000 * settings.scoreMultiplier);
+  els.settingsHint.textContent = `×${String(settings.scoreMultiplier).replace('.', ',')}: perfekter Guess baut bis zu ${maxPoints.toLocaleString('de-DE')} Punkte ab.`;
+  return settings;
+}
+
 function currentGameMode() {
   return state.room?.mode === 'globe' ? 'globe' : 'map';
 }
 
-function setRoomMode(mode) {
+function currentMatchKind() {
+  return state.room?.kind === 'solo' ? 'solo' : 'duel';
+}
+
+function setRoomMeta(payload = {}) {
   if (!state.room) return;
-  state.room.mode = mode === 'globe' ? 'globe' : 'map';
+  if (payload.mode) state.room.mode = payload.mode === 'globe' ? 'globe' : 'map';
+  if (payload.kind) state.room.kind = payload.kind === 'solo' ? 'solo' : 'duel';
+  if (payload.settings) state.room.settings = { ...(state.room.settings || {}), ...payload.settings };
+}
+
+function setRoomMode(mode) {
+  setRoomMeta({ mode });
 }
 
 function setScreen(name) {
@@ -182,13 +241,31 @@ async function createRoom() {
   showError('');
   els.createRoomButton.disabled = true;
   const mode = getSelectedMode();
+  const settings = saveSelectedSettings();
   localStorage.setItem('flagDuelMode', mode);
-  const response = await emitAck('create-room', { playerId: state.playerId, name: getName(), mode });
+  const response = await emitAck('create-room', { playerId: state.playerId, name: getName(), mode, settings });
   els.createRoomButton.disabled = false;
   if (!response.ok) return showError(response.error || 'Lobby konnte nicht erstellt werden.');
   state.roomCode = response.roomCode;
+  if (response.room) renderLobby(response.room);
   history.replaceState(null, '', `?room=${encodeURIComponent(response.roomCode)}`);
   setScreen('lobby');
+}
+
+async function startSolo() {
+  showError('');
+  els.soloStartButton.disabled = true;
+  const mode = getSelectedMode();
+  const settings = saveSelectedSettings();
+  localStorage.setItem('flagDuelMode', mode);
+  const response = await emitAck('start-solo', { playerId: state.playerId, name: getName(), mode, settings });
+  els.soloStartButton.disabled = false;
+  if (!response.ok) return showError(response.error || 'Solo-Spiel konnte nicht gestartet werden.');
+  state.roomCode = response.roomCode;
+  if (response.room) renderLobby(response.room);
+  history.replaceState(null, '', location.pathname);
+  setScreen('game');
+  els.mapHint.textContent = 'Solo startet…';
 }
 
 async function joinRoom() {
@@ -207,17 +284,29 @@ async function joinRoom() {
 function renderLobby(room) {
   state.room = room;
   state.roomCode = room.roomCode;
+  const isSolo = room.kind === 'solo';
+  const settings = room.settings || {};
   els.lobbyCode.textContent = room.roomCode;
-  els.hudRoomCode.textContent = room.roomCode;
+  els.hudRoomLabel.textContent = isSolo ? 'MODUS' : 'LOBBY';
+  els.hudRoomCode.textContent = isSolo ? 'SOLO' : room.roomCode;
+  els.scoreBoard.classList.toggle('is-solo', isSolo);
+  els.opponentScoreCard.classList.toggle('hidden', isSolo);
   const globeMode = room.mode === 'globe';
   els.lobbyModeBadge.textContent = globeMode ? '3D GLOBUS · OHNE LABELS' : '2D WELTKARTE';
   els.lobbyModeBadge.classList.toggle('is-globe', globeMode);
+  els.lobbySettings.innerHTML = [
+    settings.regionLabel || 'Weltweit',
+    `${Math.round((settings.roundDurationMs || 22000) / 1000)} Sek.`,
+    `${Number(settings.startingScore || room.startingScore || 5000).toLocaleString('de-DE')} Punkte`,
+    `×${String(settings.scoreMultiplier || 1).replace('.', ',')} Abbau`,
+  ].map((item) => `<span>${escapeHtml(item)}</span>`).join('');
   if (globeMode) ensureGlobe().catch(() => {});
   if (state.currentScreen === 'game') syncGameSurface();
 
   const slots = [...room.players];
-  while (slots.length < 2) slots.push(null);
-  els.lobbyPlayers.innerHTML = slots.map((player, index) => {
+  const desiredSlots = isSolo ? 1 : 2;
+  while (slots.length < desiredSlots) slots.push(null);
+  els.lobbyPlayers.innerHTML = slots.map((player) => {
     if (!player) {
       return `<div class="lobby-player waiting"><div class="player-avatar">?</div><strong>Gegner gesucht…</strong></div>`;
     }
@@ -246,6 +335,9 @@ function updateScores(players = state.room?.players || []) {
   if (opponent) {
     els.opponentName.textContent = opponent.name;
     els.opponentScore.textContent = opponent.score;
+  } else if (currentMatchKind() === 'solo') {
+    els.opponentName.textContent = '';
+    els.opponentScore.textContent = '';
   }
 }
 
@@ -329,7 +421,7 @@ function clearPlaySurfaceRound() {
 }
 
 function startRound(payload, { synced = false } = {}) {
-  if (payload.mode) setRoomMode(payload.mode);
+  setRoomMeta(payload);
   setScreen('game');
   els.gameOverModal.classList.add('hidden');
   els.roundResult.classList.add('hidden');
@@ -365,7 +457,7 @@ function startRound(payload, { synced = false } = {}) {
   if (state.submitted) {
     els.submitGuessButton.disabled = true;
     els.guessState.textContent = 'Tipp ist abgegeben';
-    els.mapHint.textContent = 'Warte auf deinen Gegner…';
+    els.mapHint.textContent = currentMatchKind() === 'solo' ? 'Auswertung läuft…' : 'Warte auf deinen Gegner…';
   }
   startTimer();
   if (!synced) showToast(`Runde ${payload.roundNumber} startet`);
@@ -410,13 +502,13 @@ async function submitGuess() {
   }
   state.submitted = true;
   els.guessState.textContent = 'Tipp ist abgegeben';
-  els.mapHint.textContent = 'Warte auf deinen Gegner…';
+  els.mapHint.textContent = currentMatchKind() === 'solo' ? 'Auswertung läuft…' : 'Warte auf deinen Gegner…';
   if (currentGameMode() === 'globe') state.globeController?.setGuessSubmitted();
   else if (state.ownMarker) state.ownMarker.setStyle({ fillColor: '#60a5fa' });
 }
 
 function showRoundResult(payload) {
-  if (payload.mode) setRoomMode(payload.mode);
+  setRoomMeta(payload);
   if (state.currentScreen === 'game') syncGameSurface();
   clearInterval(state.timerInterval);
   if (state.ownMarker && state.map) {
@@ -432,12 +524,16 @@ function showRoundResult(payload) {
   const opponentGuess = payload.guesses.find((guess) => guess.playerId !== state.playerId);
   const selfRoundPoints = Number(selfGuess?.roundPoints || 0);
   const opponentRoundPoints = Number(opponentGuess?.roundPoints || 0);
-  if (selfRoundPoints === 0) {
+  if (currentMatchKind() === 'solo') {
+    els.resultHeadline.textContent = selfRoundPoints > 0
+      ? `−${selfRoundPoints.toLocaleString('de-DE')} Punkte`
+      : 'Keine Punkte abgebaut';
+  } else if (selfRoundPoints === 0) {
     els.resultHeadline.textContent = 'Keine Punkte abgebaut';
   } else if (selfRoundPoints > opponentRoundPoints) {
-    els.resultHeadline.textContent = `Stark: −${selfRoundPoints} Punkte`;
+    els.resultHeadline.textContent = `Stark: −${selfRoundPoints.toLocaleString('de-DE')} Punkte`;
   } else {
-    els.resultHeadline.textContent = `−${selfRoundPoints} Punkte für dich`;
+    els.resultHeadline.textContent = `−${selfRoundPoints.toLocaleString('de-DE')} Punkte für dich`;
   }
   els.resultCountry.textContent = payload.target.capital
     ? `${payload.target.name} · Ziel: ${payload.target.capital}`
@@ -551,7 +647,7 @@ function formatDistance(km) {
 }
 
 function showGameOver(payload) {
-  if (payload.mode) setRoomMode(payload.mode);
+  setRoomMeta(payload);
   clearInterval(state.timerInterval);
   clearInterval(state.resultCountdownTimer);
   state.roundDeadline = 0;
@@ -559,23 +655,35 @@ function showGameOver(payload) {
   els.gameOverModal.classList.remove('hidden');
   const self = payload.scores.find((score) => score.playerId === state.playerId);
   const opponent = payload.scores.find((score) => score.playerId !== state.playerId);
+  const isSolo = payload.kind === 'solo' || currentMatchKind() === 'solo';
   const selfWon = payload.winnerId === state.playerId;
   const draw = !payload.winnerId;
+  const startingScore = Number(payload.settings?.startingScore || state.room?.startingScore || 5000);
 
-  els.gameOverTitle.textContent = draw ? 'Unentschieden!' : selfWon ? 'Du gewinnst!' : 'Gegner gewinnt';
-  els.gameOverScore.textContent = `${self?.score ?? 0} : ${opponent?.score ?? 0}`;
-  if (payload.reason === 'opponent-disconnected' && selfWon) {
-    els.gameOverNote.textContent = 'Dein Gegner hat die Verbindung nicht wiederhergestellt.';
+  if (isSolo) {
+    els.gameOverTitle.textContent = selfWon ? 'Geschafft!' : 'Solo beendet';
+    els.gameOverScore.textContent = `${Number(self?.score ?? 0).toLocaleString('de-DE')} Punkte`;
+    els.gameOverNote.textContent = selfWon
+      ? `Du hast deine ${startingScore.toLocaleString('de-DE')} Restpunkte auf 0 gespielt.`
+      : 'Das Solo-Match wurde beendet.';
+    els.rematchButton.textContent = 'Nochmal spielen';
+    els.rematchStatus.textContent = '';
   } else {
-    els.gameOverNote.textContent = draw
-      ? 'Ihr habt 0 gleichzeitig mit exakt gleicher Distanz erreicht.'
-      : selfWon
-        ? 'Du hast deine 5000 Restpunkte zuerst auf 0 gespielt.'
-        : 'Dein Gegner hat seine 5000 Restpunkte zuerst auf 0 gespielt.';
+    els.gameOverTitle.textContent = draw ? 'Unentschieden!' : selfWon ? 'Du gewinnst!' : 'Gegner gewinnt';
+    els.gameOverScore.textContent = `${self?.score ?? 0} : ${opponent?.score ?? 0}`;
+    if (payload.reason === 'opponent-disconnected' && selfWon) {
+      els.gameOverNote.textContent = 'Dein Gegner hat die Verbindung nicht wiederhergestellt.';
+    } else {
+      els.gameOverNote.textContent = draw
+        ? 'Ihr habt 0 gleichzeitig mit exakt gleicher Distanz erreicht.'
+        : selfWon
+          ? `Du hast deine ${startingScore.toLocaleString('de-DE')} Restpunkte zuerst auf 0 gespielt.`
+          : `Dein Gegner hat seine ${startingScore.toLocaleString('de-DE')} Restpunkte zuerst auf 0 gespielt.`;
+    }
+    els.rematchButton.textContent = 'Rematch';
+    els.rematchStatus.textContent = '';
   }
   els.rematchButton.disabled = false;
-  els.rematchButton.textContent = 'Rematch';
-  els.rematchStatus.textContent = '';
 }
 
 async function copyText(text, message) {
@@ -611,11 +719,16 @@ function resetHome() {
   setScreen('home');
 }
 
+els.soloStartButton.addEventListener('click', startSolo);
 els.createRoomButton.addEventListener('click', createRoom);
 els.joinRoomButton.addEventListener('click', joinRoom);
 document.querySelectorAll('input[name="gameMode"]').forEach((input) => {
   input.addEventListener('change', () => localStorage.setItem('flagDuelMode', getSelectedMode()));
 });
+[els.regionSelect, els.roundTimeSelect, els.startingScoreSelect, els.scoreMultiplierSelect].forEach((select) => {
+  select.addEventListener('change', saveSelectedSettings);
+});
+saveSelectedSettings();
 els.roomCodeInput.addEventListener('input', () => {
   els.roomCodeInput.value = els.roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 });
@@ -627,12 +740,13 @@ els.leaveLobbyButton.addEventListener('click', leaveRoom);
 els.submitGuessButton.addEventListener('click', submitGuess);
 els.backHomeButton.addEventListener('click', leaveRoom);
 els.rematchButton.addEventListener('click', async () => {
+  const isSolo = currentMatchKind() === 'solo';
   els.rematchButton.disabled = true;
-  els.rematchButton.textContent = 'Warte auf Gegner…';
+  els.rematchButton.textContent = isSolo ? 'Neues Spiel startet…' : 'Warte auf Gegner…';
   const response = await emitAck('request-rematch', { playerId: state.playerId, roomCode: state.roomCode });
   if (!response.ok) {
     els.rematchButton.disabled = false;
-    els.rematchButton.textContent = 'Rematch';
+    els.rematchButton.textContent = isSolo ? 'Nochmal spielen' : 'Rematch';
     showToast(response.error || 'Rematch nicht möglich.');
   }
 });
@@ -652,7 +766,7 @@ socket.on('state-sync', (payload) => {
   if (!payload?.room) return;
   state.roomCode = payload.room.roomCode;
   renderLobby(payload.room);
-  if (payload.room.status === 'waiting') setScreen('lobby');
+  if (payload.room.status === 'waiting' && payload.room.kind !== 'solo') setScreen('lobby');
   else if (payload.room.status === 'playing') {
     setScreen('game');
     if (payload.round) startRound(payload.round, { synced: true });
@@ -665,18 +779,19 @@ socket.on('state-sync', (payload) => {
 
 socket.on('lobby-update', (room) => {
   renderLobby(room);
-  if (room.status === 'waiting' && state.currentScreen !== 'home') setScreen('lobby');
+  if (room.status === 'waiting' && room.kind !== 'solo' && state.currentScreen !== 'home') setScreen('lobby');
 });
 
 socket.on('round-start', (payload) => startRound(payload));
 socket.on('guess-status', (payload) => {
-  if (payload.playerId !== state.playerId && state.submitted) {
+  if (currentMatchKind() !== 'solo' && payload.playerId !== state.playerId && state.submitted) {
     els.mapHint.textContent = 'Beide Tipps sind da – Auswertung…';
   }
 });
 socket.on('round-result', showRoundResult);
 socket.on('game-over', showGameOver);
 socket.on('rematch-status', (payload) => {
+  if (currentMatchKind() === 'solo') return;
   const selfReady = payload.ready.includes(state.playerId);
   els.rematchStatus.textContent = payload.ready.length === 2 ? 'Beide bereit – neues Match startet…' : selfReady ? 'Du bist bereit. Warte auf deinen Gegner…' : '';
 });

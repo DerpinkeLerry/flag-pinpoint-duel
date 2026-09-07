@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0f18" />
-  <meta name="description" content="Flag Pinpoint Duel – 1v1 Flaggen erraten und auf der Weltkarte pinpointen." />
-  <title>Flag Pinpoint Duel</title>
+  <meta name="description" content="Flag Pinpoint – Flaggen im Solo- oder 1v1-Modus auf 2D-Karte oder 3D-Globus pinpointen." />
+  <title>Flag Pinpoint</title>
   <link rel="stylesheet" href="/vendor/leaflet/dist/leaflet.css" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -18,17 +18,17 @@
         <div class="brand-lockup">
           <div class="brand-mark" aria-hidden="true">◎</div>
           <div>
-            <p class="eyebrow">1 VS 1 · LIVE</p>
+            <p class="eyebrow">SOLO · 1 VS 1 · LIVE</p>
             <h1>FLAG <span>PINPOINT</span></h1>
           </div>
         </div>
-        <p class="hero-copy">Erkenne die Flagge. Setze deinen Pin möglichst auf die Hauptstadt des Landes. Je näher dein Pin an der Hauptstadt liegt, desto mehr deiner 5000 Restpunkte baust du ab. Wer zuerst 0 erreicht, gewinnt.</p>
+        <p class="hero-copy">Erkenne die Flagge und pinne die Hauptstadt so präzise wie möglich. Spiele allein oder im 1-vs-1 – mit frei wählbarer Region, Rundenzeit, Startpunktzahl und Punkte-Multiplikator.</p>
 
         <label class="field-label" for="playerName">Dein Name</label>
         <input id="playerName" class="text-input" maxlength="18" autocomplete="nickname" placeholder="z. B. AtlasKing" />
 
         <fieldset class="mode-picker">
-          <legend>Modus für neue Lobby</legend>
+          <legend>Kartenmodus</legend>
           <div class="mode-options">
             <label class="mode-option">
               <input type="radio" name="gameMode" value="map" checked />
@@ -41,13 +41,67 @@
               <input type="radio" name="gameMode" value="globe" />
               <span class="mode-option-card">
                 <strong>3D Globus</strong>
-                <small>Ohne Labels · echte Erdkugel</small>
+                <small>Ohne Labels · präzise Erdkugel</small>
               </span>
             </label>
           </div>
         </fieldset>
 
-        <button id="createRoomButton" class="button button-primary button-large">Lobby erstellen</button>
+        <section class="match-settings" aria-labelledby="settingsTitle">
+          <div class="settings-heading">
+            <strong id="settingsTitle">Match-Einstellungen</strong>
+            <small>gelten für Solo &amp; neue Lobby</small>
+          </div>
+          <div class="settings-grid">
+            <label class="setting-field" for="regionSelect">
+              <span>Region</span>
+              <select id="regionSelect" class="text-input select-input">
+                <option value="world">Weltweit</option>
+                <option value="europe">Europa</option>
+                <option value="asia">Asien</option>
+                <option value="africa">Afrika</option>
+                <option value="americas">Amerika</option>
+                <option value="oceania">Ozeanien</option>
+              </select>
+            </label>
+            <label class="setting-field" for="roundTimeSelect">
+              <span>Zeit pro Flagge</span>
+              <select id="roundTimeSelect" class="text-input select-input">
+                <option value="10">10 Sekunden</option>
+                <option value="15">15 Sekunden</option>
+                <option value="22" selected>22 Sekunden</option>
+                <option value="30">30 Sekunden</option>
+                <option value="45">45 Sekunden</option>
+                <option value="60">60 Sekunden</option>
+              </select>
+            </label>
+            <label class="setting-field" for="startingScoreSelect">
+              <span>Startpunkte</span>
+              <select id="startingScoreSelect" class="text-input select-input">
+                <option value="2500">2.500</option>
+                <option value="5000" selected>5.000</option>
+                <option value="7500">7.500</option>
+                <option value="10000">10.000</option>
+              </select>
+            </label>
+            <label class="setting-field" for="scoreMultiplierSelect">
+              <span>Punkteabbau</span>
+              <select id="scoreMultiplierSelect" class="text-input select-input">
+                <option value="0.5">×0,5 · entspannt</option>
+                <option value="1" selected>×1 · normal</option>
+                <option value="1.5">×1,5 · schnell</option>
+                <option value="2">×2 · hart</option>
+                <option value="3">×3 · extrem</option>
+              </select>
+            </label>
+          </div>
+          <p id="settingsHint" class="settings-hint">×1: perfekter Guess baut bis zu 1.000 Punkte ab.</p>
+        </section>
+
+        <div class="start-actions">
+          <button id="soloStartButton" class="button button-primary button-large">Solo starten</button>
+          <button id="createRoomButton" class="button button-secondary button-large">1-vs-1 Lobby erstellen</button>
+        </div>
 
         <div class="divider"><span>oder Lobby beitreten</span></div>
 
@@ -57,7 +111,7 @@
         </div>
         <p id="homeError" class="form-error" role="alert"></p>
       </div>
-      <p class="home-note">5000 → 0 · bis zu 1000 Punkte pro Guess · 22 Sekunden pro Flagge</p>
+      <p class="home-note">Solo oder 1-vs-1 · Regeln frei konfigurierbar · 2D oder 3D</p>
     </section>
 
     <section id="lobbyScreen" class="screen lobby-screen hidden">
@@ -67,6 +121,7 @@
         <h2>Warte auf deinen Gegner</h2>
         <p class="muted">Teile den Code oder kopiere den Einladungslink.</p>
         <p id="lobbyModeBadge" class="mode-badge">2D WELTKARTE</p>
+        <div id="lobbySettings" class="settings-summary"></div>
         <button id="copyCodeButton" class="room-code" title="Code kopieren"><span id="lobbyCode">------</span><small>KOPIEREN</small></button>
 
         <div id="lobbyPlayers" class="lobby-players"></div>
@@ -82,10 +137,10 @@
     <section id="gameScreen" class="screen game-screen hidden">
       <header class="game-hud glass">
         <div class="hud-room">
-          <span class="hud-label">LOBBY</span>
+          <span id="hudRoomLabel" class="hud-label">LOBBY</span>
           <strong id="hudRoomCode">------</strong>
         </div>
-        <div class="score-board">
+        <div id="scoreBoard" class="score-board">
           <div id="selfScoreCard" class="score-player is-self">
             <span id="selfName">Du</span>
             <strong id="selfScore">5000</strong>

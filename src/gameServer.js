@@ -19,6 +19,15 @@ const DEFAULT_STARTING_SCORE = 5000;
 const DEFAULT_MAX_ROUND_POINTS = 1000;
 const DEFAULT_SCORE_DISTANCE_SCALE_KM = 1750;
 const GAME_MODES = new Set(['map', 'globe']);
+const REGION_KEYS = new Set(['world', 'europe', 'asia', 'africa', 'americas', 'oceania']);
+const REGION_LABELS = Object.freeze({
+  world: 'Weltweit',
+  europe: 'Europa',
+  asia: 'Asien',
+  africa: 'Afrika',
+  americas: 'Amerika',
+  oceania: 'Ozeanien',
+});
 
 function createGameServer(options = {}) {
   const config = {
@@ -58,6 +67,7 @@ function createGameServer(options = {}) {
         capital: country.capital[0],
         lat,
         lng,
+        regionKey: String(country.region || '').toLowerCase(),
       };
     });
 
@@ -136,6 +146,37 @@ function createGameServer(options = {}) {
     return GAME_MODES.has(mode) ? mode : 'map';
   }
 
+  function clampNumber(value, min, max, fallback) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, number));
+  }
+
+  function normalizeRoomSettings(data = {}) {
+    const input = data && typeof data === 'object' ? data : {};
+    const regionRaw = String(input.region || 'world').toLowerCase();
+    const region = REGION_KEYS.has(regionRaw) ? regionRaw : 'world';
+    const startingScore = Math.round(clampNumber(input.startingScore, 1000, 20000, config.startingScore));
+    const roundDurationMs = Math.round(clampNumber(input.roundDurationMs, 5000, 120000, config.roundDurationMs));
+    const scoreMultiplier = Math.round(clampNumber(input.scoreMultiplier, 0.25, 4, 1) * 100) / 100;
+    return { region, startingScore, roundDurationMs, scoreMultiplier };
+  }
+
+  function publicSettings(room) {
+    return {
+      region: room.region,
+      regionLabel: REGION_LABELS[room.region] || REGION_LABELS.world,
+      startingScore: room.startingScore,
+      roundDurationMs: room.roundDurationMs,
+      scoreMultiplier: room.scoreMultiplier,
+      maxRoundPoints: Math.round(config.maxRoundPoints * room.scoreMultiplier),
+    };
+  }
+
+  function requiredPlayerCount(room) {
+    return room.kind === 'solo' ? 1 : 2;
+  }
+
   function makeRoomCode() {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       let code = '';
@@ -168,9 +209,11 @@ function createGameServer(options = {}) {
     return {
       roomCode: room.code,
       status: room.status,
+      kind: room.kind,
       startingScore: room.startingScore,
-      maxRoundPoints: config.maxRoundPoints,
+      maxRoundPoints: Math.round(config.maxRoundPoints * room.scoreMultiplier),
       mode: room.mode,
+      settings: publicSettings(room),
       players: publicPlayers(room),
     };
   }
@@ -223,8 +266,10 @@ function createGameServer(options = {}) {
         flagUrl: `/api/flag/${room.flagToken}`,
         deadline: room.deadline,
         serverTime: Date.now(),
-        roundDurationMs: config.roundDurationMs,
+        roundDurationMs: room.roundDurationMs,
         mode: room.mode,
+        kind: room.kind,
+        settings: publicSettings(room),
         hasGuessed: Boolean(getPlayer(room, playerId)?.guess),
         guess: getPlayer(room, playerId)?.guess ? {
           lat: getPlayer(room, playerId).guess.lat,
@@ -279,15 +324,19 @@ function createGameServer(options = {}) {
   }
 
   function chooseCountry(room) {
-    const available = playableCountries.filter((country) => !room.usedCountries.has(country.code));
-    const pool = available.length ? available : playableCountries;
+    const regionalPool = room.region === 'world'
+      ? playableCountries
+      : playableCountries.filter((country) => country.regionKey === room.region);
+    const basePool = regionalPool.length ? regionalPool : playableCountries;
+    const available = basePool.filter((country) => !room.usedCountries.has(country.code));
+    const pool = available.length ? available : basePool;
     const country = pool[crypto.randomInt(0, pool.length)];
     room.usedCountries.add(country.code);
     return country;
   }
 
   function startGame(room) {
-    if (room.players.length !== 2 || room.players.some((p) => !p.connected)) return;
+    if (room.players.length !== requiredPlayerCount(room) || room.players.some((p) => !p.connected)) return;
     clearRoomTimers(room);
     room.status = 'playing';
     room.roundIndex = -1;
@@ -307,26 +356,28 @@ function createGameServer(options = {}) {
   }
 
   function nextRound(room) {
-    if (room.status !== 'playing' || room.players.length !== 2) return;
+    if (room.status !== 'playing' || room.players.length !== requiredPlayerCount(room)) return;
     room.roundIndex += 1;
     room.players.forEach((player) => { player.guess = null; });
     room.lastRoundResult = null;
     room.resultExpiresAt = 0;
     room.target = chooseCountry(room);
     room.flagToken = makeFlagToken(room.target.code);
-    room.deadline = Date.now() + config.roundDurationMs;
+    room.deadline = Date.now() + room.roundDurationMs;
 
     io.to(room.code).emit('round-start', {
       roundNumber: room.roundIndex + 1,
       flagUrl: `/api/flag/${room.flagToken}`,
       deadline: room.deadline,
       serverTime: Date.now(),
-      roundDurationMs: config.roundDurationMs,
+      roundDurationMs: room.roundDurationMs,
       mode: room.mode,
+      kind: room.kind,
+      settings: publicSettings(room),
     });
     emitLobby(room);
 
-    room.roundTimer = setTimeout(() => finishRound(room), config.roundDurationMs + 75);
+    room.roundTimer = setTimeout(() => finishRound(room), room.roundDurationMs + 75);
   }
 
   function haversineKm(aLat, aLng, bLat, bLng) {
@@ -341,10 +392,11 @@ function createGameServer(options = {}) {
     return 2 * R * Math.asin(Math.sqrt(h));
   }
 
-  function roundPointsForDistance(distanceKm) {
+  function roundPointsForDistance(distanceKm, room) {
     if (!Number.isFinite(distanceKm) || distanceKm < 0) return 0;
-    const raw = config.maxRoundPoints * Math.exp(-distanceKm / config.scoreDistanceScaleKm);
-    return Math.max(0, Math.min(config.maxRoundPoints, Math.round(raw)));
+    const effectiveMax = config.maxRoundPoints * room.scoreMultiplier;
+    const raw = effectiveMax * Math.exp(-distanceKm / config.scoreDistanceScaleKm);
+    return Math.max(0, Math.min(Math.round(effectiveMax), Math.round(raw)));
   }
 
   function finishRound(room) {
@@ -356,7 +408,7 @@ function createGameServer(options = {}) {
       const distanceKm = player.guess
         ? haversineKm(player.guess.lat, player.guess.lng, room.target.lat, room.target.lng)
         : null;
-      const roundPoints = roundPointsForDistance(distanceKm);
+      const roundPoints = roundPointsForDistance(distanceKm, room);
       const scoreBefore = player.score;
       player.score = Math.max(0, player.score - roundPoints);
       return {
@@ -409,6 +461,8 @@ function createGameServer(options = {}) {
       scores: room.players.map((player) => ({ playerId: player.id, name: player.name, score: player.score })),
       nextRoundInMs: config.revealDurationMs,
       mode: room.mode,
+      kind: room.kind,
+      settings: publicSettings(room),
     };
     room.lastRoundResult = resultPayload;
     room.resultExpiresAt = Date.now() + config.revealDurationMs;
@@ -438,7 +492,19 @@ function createGameServer(options = {}) {
       }
     }
 
-    return { roomCode: room.code, scores, winnerId, reason, mode: room.mode };
+    if (!winnerId && room.kind === 'solo' && scores.length === 1 && scores[0].score === 0) {
+      winnerId = scores[0].playerId;
+    }
+
+    return {
+      roomCode: room.code,
+      scores,
+      winnerId,
+      reason,
+      mode: room.mode,
+      kind: room.kind,
+      settings: publicSettings(room),
+    };
   }
 
   function endGame(room, forcedWinnerId = null, reason = 'completed') {
@@ -463,7 +529,7 @@ function createGameServer(options = {}) {
   }
 
   function maybeFinishEarly(room) {
-    if (room.players.length === 2 && room.players.every((player) => Boolean(player.guess))) {
+    if (room.players.length === requiredPlayerCount(room) && room.players.every((player) => Boolean(player.guess))) {
       if (room.roundTimer) clearTimeout(room.roundTimer);
       room.roundTimer = setTimeout(() => finishRound(room), 450);
     }
@@ -486,11 +552,16 @@ function createGameServer(options = {}) {
       if (oldRoomCode) socket.leave(oldRoomCode);
 
       const roomCode = makeRoomCode();
+      const settings = normalizeRoomSettings(data.settings);
       const room = {
         code: roomCode,
+        kind: 'duel',
         status: 'waiting',
         mode: normalizeGameMode(data.mode),
-        startingScore: config.startingScore,
+        region: settings.region,
+        startingScore: settings.startingScore,
+        roundDurationMs: settings.roundDurationMs,
+        scoreMultiplier: settings.scoreMultiplier,
         roundIndex: -1,
         usedCountries: new Set(),
         players: [],
@@ -512,14 +583,63 @@ function createGameServer(options = {}) {
         name: normalizeName(data.name),
         socketId: socket.id,
         connected: true,
-        score: config.startingScore,
+        score: room.startingScore,
         guess: null,
       };
       room.players.push(player);
       players.get(playerId).roomCode = roomCode;
       socket.join(roomCode);
       emitLobby(room);
-      return safeAck(ack, { ok: true, roomCode, mode: room.mode });
+      return safeAck(ack, { ok: true, roomCode, mode: room.mode, room: lobbyPayload(room) });
+    });
+
+    socket.on('start-solo', (data = {}, ack) => {
+      const playerId = normalizePlayerId(data.playerId);
+      if (!playerId) return safeAck(ack, { ok: false, error: 'Ungültige Spieler-ID.' });
+      const record = bindSocketToPlayer(socket, playerId, { sync: false });
+      const oldRoomCode = record.roomCode;
+      leaveCurrentRoom(playerId);
+      if (oldRoomCode) socket.leave(oldRoomCode);
+
+      const roomCode = makeRoomCode();
+      const settings = normalizeRoomSettings(data.settings);
+      const room = {
+        code: roomCode,
+        kind: 'solo',
+        status: 'waiting',
+        mode: normalizeGameMode(data.mode),
+        region: settings.region,
+        startingScore: settings.startingScore,
+        roundDurationMs: settings.roundDurationMs,
+        scoreMultiplier: settings.scoreMultiplier,
+        roundIndex: -1,
+        usedCountries: new Set(),
+        players: [],
+        rematchReady: new Set(),
+        target: null,
+        flagToken: null,
+        deadline: 0,
+        roundTimer: null,
+        transitionTimer: null,
+        cleanupTimer: null,
+        finalResult: null,
+        lastRoundResult: null,
+        resultExpiresAt: 0,
+      };
+      rooms.set(roomCode, room);
+
+      room.players.push({
+        id: playerId,
+        name: normalizeName(data.name),
+        socketId: socket.id,
+        connected: true,
+        score: room.startingScore,
+        guess: null,
+      });
+      players.get(playerId).roomCode = roomCode;
+      socket.join(roomCode);
+      startGame(room);
+      return safeAck(ack, { ok: true, roomCode, mode: room.mode, room: lobbyPayload(room) });
     });
 
     socket.on('join-room', (data = {}, ack) => {
@@ -528,6 +648,7 @@ function createGameServer(options = {}) {
       if (!playerId) return safeAck(ack, { ok: false, error: 'Ungültige Spieler-ID.' });
       const room = rooms.get(roomCode);
       if (!room) return safeAck(ack, { ok: false, error: 'Lobby nicht gefunden.' });
+      if (room.kind !== 'duel') return safeAck(ack, { ok: false, error: 'Diese Session ist ein Solo-Spiel.' });
 
       const record = bindSocketToPlayer(socket, playerId, { sync: false });
       const existingPlayer = getPlayer(room, playerId);
@@ -557,7 +678,7 @@ function createGameServer(options = {}) {
         name: normalizeName(data.name),
         socketId: socket.id,
         connected: true,
-        score: config.startingScore,
+        score: room.startingScore,
         guess: null,
       };
       room.players.push(player);
@@ -605,6 +726,12 @@ function createGameServer(options = {}) {
       if (!room || room.status !== 'ended' || !playerId || !getPlayer(room, playerId)) {
         return safeAck(ack, { ok: false, error: 'Rematch ist gerade nicht möglich.' });
       }
+      if (room.kind === 'solo') {
+        safeAck(ack, { ok: true, solo: true });
+        startGame(room);
+        return;
+      }
+
       room.rematchReady.add(playerId);
       emitLobby(room);
       io.to(room.code).emit('rematch-status', { ready: Array.from(room.rematchReady) });
@@ -641,7 +768,7 @@ function createGameServer(options = {}) {
 
           if (latestRoom.status === 'playing') {
             const opponent = latestRoom.players.find((p) => p.id !== playerId && p.connected);
-            endGame(latestRoom, opponent?.id || null, 'opponent-disconnected');
+            endGame(latestRoom, opponent?.id || null, latestRoom.kind === 'solo' ? 'player-disconnected' : 'opponent-disconnected');
           } else if (latestRoom.status === 'waiting' || latestRoom.status === 'ended') {
             leaveCurrentRoom(playerId);
           }
