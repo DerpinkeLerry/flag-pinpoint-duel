@@ -18,6 +18,7 @@ const ROOM_CODE_LENGTH = 6;
 const DEFAULT_STARTING_SCORE = 5000;
 const DEFAULT_MAX_ROUND_POINTS = 1000;
 const DEFAULT_SCORE_DISTANCE_SCALE_KM = 1750;
+const GAME_MODES = new Set(['map', 'globe']);
 
 function createGameServer(options = {}) {
   const config = {
@@ -130,6 +131,11 @@ function createGameServer(options = {}) {
     return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_CODE_LENGTH);
   }
 
+  function normalizeGameMode(value) {
+    const mode = String(value || '').toLowerCase();
+    return GAME_MODES.has(mode) ? mode : 'map';
+  }
+
   function makeRoomCode() {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       let code = '';
@@ -164,6 +170,7 @@ function createGameServer(options = {}) {
       status: room.status,
       startingScore: room.startingScore,
       maxRoundPoints: config.maxRoundPoints,
+      mode: room.mode,
       players: publicPlayers(room),
     };
   }
@@ -217,6 +224,7 @@ function createGameServer(options = {}) {
         deadline: room.deadline,
         serverTime: Date.now(),
         roundDurationMs: config.roundDurationMs,
+        mode: room.mode,
         hasGuessed: Boolean(getPlayer(room, playerId)?.guess),
         guess: getPlayer(room, playerId)?.guess ? {
           lat: getPlayer(room, playerId).guess.lat,
@@ -314,6 +322,7 @@ function createGameServer(options = {}) {
       deadline: room.deadline,
       serverTime: Date.now(),
       roundDurationMs: config.roundDurationMs,
+      mode: room.mode,
     });
     emitLobby(room);
 
@@ -399,6 +408,7 @@ function createGameServer(options = {}) {
       matchEnded,
       scores: room.players.map((player) => ({ playerId: player.id, name: player.name, score: player.score })),
       nextRoundInMs: config.revealDurationMs,
+      mode: room.mode,
     };
     room.lastRoundResult = resultPayload;
     room.resultExpiresAt = Date.now() + config.revealDurationMs;
@@ -428,7 +438,7 @@ function createGameServer(options = {}) {
       }
     }
 
-    return { roomCode: room.code, scores, winnerId, reason };
+    return { roomCode: room.code, scores, winnerId, reason, mode: room.mode };
   }
 
   function endGame(room, forcedWinnerId = null, reason = 'completed') {
@@ -479,6 +489,7 @@ function createGameServer(options = {}) {
       const room = {
         code: roomCode,
         status: 'waiting',
+        mode: normalizeGameMode(data.mode),
         startingScore: config.startingScore,
         roundIndex: -1,
         usedCountries: new Set(),
@@ -508,7 +519,7 @@ function createGameServer(options = {}) {
       players.get(playerId).roomCode = roomCode;
       socket.join(roomCode);
       emitLobby(room);
-      return safeAck(ack, { ok: true, roomCode });
+      return safeAck(ack, { ok: true, roomCode, mode: room.mode });
     });
 
     socket.on('join-room', (data = {}, ack) => {
@@ -572,8 +583,8 @@ function createGameServer(options = {}) {
       if (room.status !== 'playing' || !room.target) return safeAck(ack, { ok: false, error: 'Keine aktive Runde.' });
       if (Date.now() > room.deadline + 250) return safeAck(ack, { ok: false, error: 'Die Zeit ist abgelaufen.' });
       if (player.guess) return safeAck(ack, { ok: false, error: 'Tipp wurde bereits abgegeben.' });
-      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -85 || lat > 85 || lng < -180 || lng > 180) {
-        return safeAck(ack, { ok: false, error: 'Ungültige Kartenposition.' });
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return safeAck(ack, { ok: false, error: 'Ungültige Position.' });
       }
 
       player.guess = { lat, lng, submittedAt: Date.now() };

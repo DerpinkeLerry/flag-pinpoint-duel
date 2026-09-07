@@ -52,9 +52,13 @@ test('two players can create, join and resolve a round', async (t) => {
   assert.equal((await emitAck(a, 'hello', { playerId: 'player_alpha_123456' })).ok, true);
   assert.equal((await emitAck(b, 'hello', { playerId: 'player_bravo_123456' })).ok, true);
 
-  const created = await emitAck(a, 'create-room', { playerId: 'player_alpha_123456', name: 'Alpha' });
+  const created = await emitAck(a, 'create-room', {
+    playerId: 'player_alpha_123456', name: 'Alpha', mode: 'globe',
+  });
   assert.equal(created.ok, true);
   assert.match(created.roomCode, /^[A-Z0-9]{6}$/);
+  assert.equal(created.mode, 'globe');
+  assert.equal(game.debug.rooms.get(created.roomCode).mode, 'globe');
 
   const roundA = once(a, 'round-start');
   const roundB = once(b, 'round-start');
@@ -69,6 +73,8 @@ test('two players can create, join and resolve a round', async (t) => {
   const health = await fetch(`${url}/health`);
   assert.equal(health.status, 200);
   assert.equal(payloadA.roundNumber, 1);
+  assert.equal(payloadA.mode, 'globe');
+  assert.equal(payloadB.mode, 'globe');
   assert.equal(payloadA.flagUrl, payloadB.flagUrl);
   assert.match(payloadA.flagUrl, /^\/api\/flag\/[A-Za-z0-9_-]+$/);
   const flagResponse = await fetch(`${url}${payloadA.flagUrl}`);
@@ -96,6 +102,7 @@ test('two players can create, join and resolve a round', async (t) => {
   assert.ok(Number.isFinite(result.target.lat));
   assert.ok(Number.isFinite(result.target.lng));
   assert.equal(result.matchEnded, true);
+  assert.equal(result.mode, 'globe');
   assert.ok(result.guesses.every((guess) => Number.isFinite(guess.distanceKm)));
   const alphaGuess = result.guesses.find((guess) => guess.playerId === 'player_alpha_123456');
   const bravoGuess = result.guesses.find((guess) => guess.playerId === 'player_bravo_123456');
@@ -106,6 +113,7 @@ test('two players can create, join and resolve a round', async (t) => {
 
   const gameOver = await gameOverA;
   assert.equal(gameOver.scores.length, 2);
+  assert.equal(gameOver.mode, 'globe');
   assert.equal(gameOver.winnerId, 'player_alpha_123456');
   assert.equal(gameOver.scores.find((score) => score.playerId === 'player_alpha_123456').score, 0);
 });

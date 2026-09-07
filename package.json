@@ -1,8 +1,8 @@
 {
   "name": "flag-pinpoint-duel",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
-  "description": "1v1 multiplayer flag guessing game with a world map, Socket.IO and Render deployment.",
+  "description": "1v1 multiplayer flag guessing game with 2D world map and unlabeled 3D globe modes.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

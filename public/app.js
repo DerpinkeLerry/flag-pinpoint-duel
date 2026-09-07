@@ -15,6 +15,7 @@ const els = {
   lobbyCode: document.getElementById('lobbyCode'),
   lobbyPlayers: document.getElementById('lobbyPlayers'),
   lobbyStatus: document.getElementById('lobbyStatus'),
+  lobbyModeBadge: document.getElementById('lobbyModeBadge'),
   copyCodeButton: document.getElementById('copyCodeButton'),
   copyLinkButton: document.getElementById('copyLinkButton'),
   leaveLobbyButton: document.getElementById('leaveLobbyButton'),
@@ -27,6 +28,9 @@ const els = {
   timerText: document.getElementById('timerText'),
   timerRingProgress: document.getElementById('timerRingProgress'),
   timerWrap: document.querySelector('.timer-wrap'),
+  map: document.getElementById('map'),
+  globe: document.getElementById('globe'),
+  globeStatus: document.getElementById('globeStatus'),
   mapHint: document.getElementById('mapHint'),
   flagImage: document.getElementById('flagImage'),
   guessState: document.getElementById('guessState'),
@@ -53,6 +57,8 @@ const state = {
   roomCode: null,
   room: null,
   map: null,
+  globeController: null,
+  globePromise: null,
   ownMarker: null,
   resultLayers: [],
   pendingGuess: null,
@@ -75,18 +81,78 @@ function getOrCreatePlayerId() {
 }
 
 els.playerName.value = localStorage.getItem('flagDuelName') || '';
+const savedMode = localStorage.getItem('flagDuelMode');
+if (savedMode === 'globe' || savedMode === 'map') {
+  const modeInput = document.querySelector(`input[name="gameMode"][value="${savedMode}"]`);
+  if (modeInput) modeInput.checked = true;
+}
 const inviteCode = new URLSearchParams(location.search).get('room');
 if (inviteCode) els.roomCodeInput.value = inviteCode.toUpperCase().slice(0, 6);
+
+function getSelectedMode() {
+  return document.querySelector('input[name="gameMode"]:checked')?.value === 'globe' ? 'globe' : 'map';
+}
+
+function currentGameMode() {
+  return state.room?.mode === 'globe' ? 'globe' : 'map';
+}
+
+function setRoomMode(mode) {
+  if (!state.room) return;
+  state.room.mode = mode === 'globe' ? 'globe' : 'map';
+}
 
 function setScreen(name) {
   state.currentScreen = name;
   els.homeScreen.classList.toggle('hidden', name !== 'home');
   els.lobbyScreen.classList.toggle('hidden', name !== 'lobby');
   els.gameScreen.classList.toggle('hidden', name !== 'game');
-  if (name === 'game') {
+  if (name === 'game') syncGameSurface();
+}
+
+function syncGameSurface() {
+  const globeMode = currentGameMode() === 'globe';
+  els.map.classList.toggle('hidden', globeMode);
+  els.globe.classList.toggle('hidden', !globeMode);
+
+  if (globeMode) {
+    ensureGlobe().then((globe) => {
+      globe.resize();
+      if (state.currentScreen === 'game' && !state.pendingGuess && state.roundDeadline) {
+        els.mapHint.textContent = 'Globus drehen · auf die Hauptstadt tippen';
+      }
+    }).catch(() => {
+      els.globeStatus.textContent = '3D-Globus konnte nicht geladen werden.';
+      els.globeStatus.classList.remove('hidden');
+      els.mapHint.textContent = '3D-Globus nicht verfügbar';
+    });
+  } else {
     ensureMap();
     setTimeout(() => state.map?.invalidateSize(), 80);
   }
+}
+
+async function ensureGlobe() {
+  if (state.globePromise) return state.globePromise;
+  if (state.globeController) return state.globeController;
+
+  state.globePromise = import('/globe.js')
+    .then(async ({ GlobeController }) => {
+      const globe = new GlobeController(els.globe, {
+        statusElement: els.globeStatus,
+        onSelect: ({ lat, lng }) => handleSurfaceSelection(lat, lng),
+      });
+      state.globeController = globe;
+      await globe.init();
+      return globe;
+    })
+    .catch((error) => {
+      state.globeController = null;
+      state.globePromise = null;
+      console.error('3D globe failed to initialize', error);
+      throw error;
+    });
+  return state.globePromise;
 }
 
 function getName() {
@@ -115,7 +181,9 @@ function emitAck(event, payload) {
 async function createRoom() {
   showError('');
   els.createRoomButton.disabled = true;
-  const response = await emitAck('create-room', { playerId: state.playerId, name: getName() });
+  const mode = getSelectedMode();
+  localStorage.setItem('flagDuelMode', mode);
+  const response = await emitAck('create-room', { playerId: state.playerId, name: getName(), mode });
   els.createRoomButton.disabled = false;
   if (!response.ok) return showError(response.error || 'Lobby konnte nicht erstellt werden.');
   state.roomCode = response.roomCode;
@@ -141,6 +209,11 @@ function renderLobby(room) {
   state.roomCode = room.roomCode;
   els.lobbyCode.textContent = room.roomCode;
   els.hudRoomCode.textContent = room.roomCode;
+  const globeMode = room.mode === 'globe';
+  els.lobbyModeBadge.textContent = globeMode ? '3D GLOBUS · OHNE LABELS' : '2D WELTKARTE';
+  els.lobbyModeBadge.classList.toggle('is-globe', globeMode);
+  if (globeMode) ensureGlobe().catch(() => {});
+  if (state.currentScreen === 'game') syncGameSurface();
 
   const slots = [...room.players];
   while (slots.length < 2) slots.push(null);
@@ -193,11 +266,23 @@ function ensureMap() {
   }).addTo(state.map);
 
   state.map.on('click', (event) => {
-    if (state.submitted || !state.roundDeadline || Date.now() >= state.roundDeadline) return;
-    const { lat, lng } = event.latlng;
-    state.pendingGuess = { lat, lng: normalizeLng(lng) };
+    if (currentGameMode() !== 'map') return;
+    handleSurfaceSelection(event.latlng.lat, event.latlng.lng);
+  });
+}
+
+function handleSurfaceSelection(lat, lng) {
+  if (state.submitted || !state.roundDeadline || Date.now() >= state.roundDeadline) return;
+  const safeLat = Math.max(-90, Math.min(90, Number(lat)));
+  const safeLng = normalizeLng(Number(lng));
+  if (!Number.isFinite(safeLat) || !Number.isFinite(safeLng)) return;
+
+  state.pendingGuess = { lat: safeLat, lng: safeLng };
+  if (currentGameMode() === 'globe') {
+    state.globeController?.setGuessMarker(safeLat, safeLng, false);
+  } else if (state.map) {
     if (!state.ownMarker) {
-      state.ownMarker = L.circleMarker([lat, normalizeLng(lng)], {
+      state.ownMarker = L.circleMarker([safeLat, safeLng], {
         radius: 9,
         weight: 4,
         color: '#ffffff',
@@ -205,12 +290,15 @@ function ensureMap() {
         fillOpacity: 1,
       }).addTo(state.map);
     } else {
-      state.ownMarker.setLatLng([lat, normalizeLng(lng)]);
+      state.ownMarker.setLatLng([safeLat, safeLng]);
     }
-    els.submitGuessButton.disabled = false;
-    els.guessState.textContent = 'Pin gesetzt – noch nicht gesendet';
-    els.mapHint.textContent = 'Pin verschieben oder Tipp abgeben';
-  });
+  }
+
+  els.submitGuessButton.disabled = false;
+  els.guessState.textContent = 'Pin gesetzt – noch nicht gesendet';
+  els.mapHint.textContent = currentGameMode() === 'globe'
+    ? 'Weiter drehen oder Tipp abgeben'
+    : 'Pin verschieben oder Tipp abgeben';
 }
 
 function normalizeLng(lng) {
@@ -220,43 +308,60 @@ function normalizeLng(lng) {
   return value;
 }
 
-function clearMapRound() {
-  if (state.ownMarker) {
+function clearPlaySurfaceRound() {
+  if (state.ownMarker && state.map) {
     state.map.removeLayer(state.ownMarker);
     state.ownMarker = null;
   }
-  state.resultLayers.forEach((layer) => state.map.removeLayer(layer));
+  if (state.map) state.resultLayers.forEach((layer) => state.map.removeLayer(layer));
   state.resultLayers = [];
+  state.globeController?.clearRound();
   state.pendingGuess = null;
   state.submitted = false;
   els.submitGuessButton.disabled = true;
   els.guessState.textContent = 'Ziel: Hauptstadt';
-  els.mapHint.textContent = 'Tippe auf die Hauptstadt des Landes';
-  state.map.setView([18, 0], 2, { animate: true });
+  els.mapHint.textContent = currentGameMode() === 'globe'
+    ? 'Globus drehen · auf die Hauptstadt tippen'
+    : 'Tippe auf die Hauptstadt des Landes';
+
+  if (currentGameMode() === 'globe') state.globeController?.resetView();
+  else state.map?.setView([18, 0], 2, { animate: true });
 }
 
 function startRound(payload, { synced = false } = {}) {
+  if (payload.mode) setRoomMode(payload.mode);
   setScreen('game');
   els.gameOverModal.classList.add('hidden');
   els.roundResult.classList.add('hidden');
   clearTimeout(state.resultTimer);
   clearInterval(state.resultCountdownTimer);
-  clearMapRound();
+  clearPlaySurfaceRound();
   els.flagImage.src = payload.flagUrl;
   els.roundLabel.textContent = `Runde ${payload.roundNumber}`;
   state.roundDeadline = Number(payload.deadline || 0);
   state.roundDuration = Number(payload.roundDurationMs || 22000);
   state.submitted = Boolean(payload.hasGuessed);
+
   if (payload.guess && Number.isFinite(payload.guess.lat) && Number.isFinite(payload.guess.lng)) {
-    state.pendingGuess = { lat: payload.guess.lat, lng: payload.guess.lng };
-    state.ownMarker = L.circleMarker([payload.guess.lat, payload.guess.lng], {
-      radius: 9,
-      weight: 4,
-      color: '#ffffff',
-      fillColor: '#60a5fa',
-      fillOpacity: 1,
-    }).addTo(state.map);
+    state.pendingGuess = { lat: payload.guess.lat, lng: normalizeLng(payload.guess.lng) };
+    if (currentGameMode() === 'globe') {
+      const restoredGuess = { ...state.pendingGuess };
+      ensureGlobe().then((globe) => {
+        if (state.pendingGuess?.lat === restoredGuess.lat && state.pendingGuess?.lng === restoredGuess.lng) {
+          globe.setGuessMarker(restoredGuess.lat, restoredGuess.lng, true);
+        }
+      }).catch(() => {});
+    } else if (state.map) {
+      state.ownMarker = L.circleMarker([payload.guess.lat, payload.guess.lng], {
+        radius: 9,
+        weight: 4,
+        color: '#ffffff',
+        fillColor: '#60a5fa',
+        fillOpacity: 1,
+      }).addTo(state.map);
+    }
   }
+
   if (state.submitted) {
     els.submitGuessButton.disabled = true;
     els.guessState.textContent = 'Tipp ist abgegeben';
@@ -306,15 +411,19 @@ async function submitGuess() {
   state.submitted = true;
   els.guessState.textContent = 'Tipp ist abgegeben';
   els.mapHint.textContent = 'Warte auf deinen Gegner…';
-  if (state.ownMarker) state.ownMarker.setStyle({ fillColor: '#60a5fa' });
+  if (currentGameMode() === 'globe') state.globeController?.setGuessSubmitted();
+  else if (state.ownMarker) state.ownMarker.setStyle({ fillColor: '#60a5fa' });
 }
 
 function showRoundResult(payload) {
+  if (payload.mode) setRoomMode(payload.mode);
+  if (state.currentScreen === 'game') syncGameSurface();
   clearInterval(state.timerInterval);
   if (state.ownMarker && state.map) {
     state.map.removeLayer(state.ownMarker);
     state.ownMarker = null;
   }
+  state.globeController?.clearGuessMarker();
   state.roundDeadline = 0;
   els.submitGuessButton.disabled = true;
   els.flagImage.removeAttribute('src');
@@ -362,7 +471,7 @@ function showRoundResult(payload) {
     });
   });
 
-  if (state.map) {
+  if (currentGameMode() === 'map' && state.map) {
     const targetMarker = L.circleMarker([payload.target.lat, payload.target.lng], {
       radius: 10,
       weight: 4,
@@ -416,6 +525,8 @@ function showRoundResult(payload) {
     } else {
       state.map.setView([payload.target.lat, payload.target.lng], 4, { animate: true });
     }
+  } else if (currentGameMode() === 'globe') {
+    ensureGlobe().then((globe) => globe.showRoundResult(payload, state.playerId)).catch(() => {});
   }
 
   if (state.room) {
@@ -440,6 +551,7 @@ function formatDistance(km) {
 }
 
 function showGameOver(payload) {
+  if (payload.mode) setRoomMode(payload.mode);
   clearInterval(state.timerInterval);
   clearInterval(state.resultCountdownTimer);
   state.roundDeadline = 0;
@@ -492,6 +604,7 @@ function resetHome() {
   state.roundDeadline = 0;
   clearInterval(state.timerInterval);
   clearTimeout(state.resultTimer);
+  state.globeController?.clearRound();
   els.gameOverModal.classList.add('hidden');
   els.roundResult.classList.add('hidden');
   history.replaceState(null, '', location.pathname);
@@ -500,6 +613,9 @@ function resetHome() {
 
 els.createRoomButton.addEventListener('click', createRoom);
 els.joinRoomButton.addEventListener('click', joinRoom);
+document.querySelectorAll('input[name="gameMode"]').forEach((input) => {
+  input.addEventListener('change', () => localStorage.setItem('flagDuelMode', getSelectedMode()));
+});
 els.roomCodeInput.addEventListener('input', () => {
   els.roomCodeInput.value = els.roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 });

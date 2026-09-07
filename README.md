@@ -9,7 +9,10 @@ Ein komplettes 1-gegen-1-Flaggen-Spiel für den Browser. Ein Spieler erstellt ei
 - Beide Spieler starten mit 5000 Restpunkten; wer zuerst 0 erreicht, gewinnt
 - Bis zu 1000 Punkte Fortschritt pro Guess, mit weichem Distanz-Falloff zur Hauptstadt
 - 22 Sekunden pro Flagge; das Match läuft so viele Runden wie nötig
-- Große interaktive Weltkarte mit Leaflet + OpenStreetMap
+- Zwei Spielmodi pro Lobby: klassische 2D-Weltkarte oder interaktiver 3D-Globus
+- 3D-Globus mit echter WebGL-Kugel, Weltraum-Look, unbeschrifteter Erdtextur und ohne Länder-/Städtenamen
+- Globus auf Desktop und Handy drehen, zoomen (Mausrad/Pinch) und direkt auf der Erdoberfläche tippen
+- Große interaktive 2D-Weltkarte mit Leaflet + OpenStreetMap
 - Pin setzen und Tipp verbindlich abgeben
 - Distanzberechnung ausschließlich auf dem Server (Haversine)
 - Je näher der Tipp an der Hauptstadt liegt, desto mehr Restpunkte werden beim eigenen Stand abgezogen
@@ -72,7 +75,8 @@ Der Server bindet an `0.0.0.0` und verwendet automatisch `process.env.PORT`, wie
 ```text
 flag-guessing-game/
 ├── public/
-│   ├── app.js          # Browser-Logik, Leaflet, UI, Socket-Events
+│   ├── app.js          # Browser-Logik, Moduswechsel, UI, Socket-Events
+│   ├── globe.js        # Three.js/WebGL-Globus, Raycasting, 3D-Marker und Ergebnisbögen
 │   ├── index.html      # Screens für Home, Lobby, Spiel und Ergebnis
 │   └── styles.css      # Responsive Design
 ├── src/
@@ -92,13 +96,24 @@ flag-guessing-game/
 
 Die Lobby-Daten liegen absichtlich im Arbeitsspeicher des Node-Prozesses. Für einen einzelnen Render-Instance ist das ideal und simpel. Wenn du später horizontal auf mehrere Instanzen skalieren willst, solltest du Lobby-/Spielzustand in Redis speichern und den Socket.IO Redis Adapter einsetzen, damit beide Spieler unabhängig von der gewählten Instanz denselben Zustand sehen.
 
-## Karten- und Flag-Daten
+## Karten-, Globus- und Flag-Daten
 
-- Karte: OpenStreetMap Tiles über Leaflet
+- 2D-Karte: OpenStreetMap Tiles über Leaflet
+- 3D-Globus: Three.js/WebGL; keine Kartenlabels oder Ortsnamen auf der Kugel
+- Erdoberfläche: unbeschriftete natürliche Erdtextur aus den Three.js-Beispielassets, mit NASA Blue Marble als Fallback
 - Länder-Metadaten: `world-countries`
 - SVG-Flaggen: `flag-icons`
 
+Three.js und die Erdtextur werden im 3D-Modus per HTTPS geladen. Der normale 2D-Modus benötigt wie bisher Netzwerkzugriff auf OpenStreetMap-Tiles.
+
 Die Flaggen werden vom eigenen Server über zufällige Tokens ausgeliefert. Dadurch steht der Ländercode nicht direkt in der Flag-URL des Clients.
+
+
+## Version 1.2.0 – 3D-Globus-Modus
+
+Beim Erstellen einer Lobby kann der Host jetzt zwischen **2D Weltkarte** und **3D Globus** wählen. Der Modus ist serverseitig Teil der Lobby und gilt automatisch für beide Spieler sowie für Rematches.
+
+Im Globus-Modus gibt es auf der Erde **keine Länder-, Stadt- oder Hauptstadt-Namen**. Die Auswahl erfolgt über Raycasting direkt auf die 3D-Kugel; der getroffene Punkt wird in Latitude/Longitude umgerechnet und anschließend exakt mit derselben serverseitigen Haversine- und 5000→0-Wertung wie im Kartenmodus ausgewertet. In der Reveal-Phase werden Ziel und beide Tipps als farbige 3D-Punkte mit Bögen auf der Kugel dargestellt.
 
 ## Hotfix 1.1.1
 
