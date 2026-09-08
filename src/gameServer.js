@@ -471,7 +471,8 @@ function createGameServer(options = {}) {
       const remaining = activePlayers(room); if (remaining.length <= 1) { matchEnded = true; matchWinnerId = remaining[0]?.id || winnerId; if (remaining[0]) remaining[0].rank = 1; }
     } else {
       for (const guess of guesses) {
-        const player = getPlayer(room, guess.playerId); const applies = room.format !== 'distance' || winnerId === guess.playerId;
+        const player = getPlayer(room, guess.playerId);
+        const applies = room.kind !== 'duel' || winnerId === guess.playerId;
         guess.appliedPoints = applies ? guess.roundPoints : 0; player.score = Math.max(0, player.score - guess.appliedPoints); guess.scoreAfter = player.score;
       }
       const zeroPlayers = room.players.filter((player) => player.score === 0);

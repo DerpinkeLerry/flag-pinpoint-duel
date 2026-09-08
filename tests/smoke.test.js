@@ -84,7 +84,7 @@ test('two players can create, join and resolve a round', async (t) => {
 
   const target = game.debug.rooms.get(created.roomCode).target;
   assert.ok(target);
-  const oppositeLng = target.lng >= 0 ? target.lng - 180 : target.lng + 180;
+  const nearbyLng = target.lng >= 179 ? target.lng - 1 : target.lng + 1;
 
   const gameOverA = once(a, 'game-over');
   const resultA = once(a, 'round-result');
@@ -92,7 +92,7 @@ test('two players can create, join and resolve a round', async (t) => {
     playerId: 'player_alpha_123456', roomCode: created.roomCode, lat: target.lat, lng: target.lng,
   })).ok, true);
   assert.equal((await emitAck(b, 'submit-guess', {
-    playerId: 'player_bravo_123456', roomCode: created.roomCode, lat: -target.lat, lng: oppositeLng,
+    playerId: 'player_bravo_123456', roomCode: created.roomCode, lat: target.lat, lng: nearbyLng,
   })).ok, true);
 
   const result = await resultA;
@@ -108,7 +108,8 @@ test('two players can create, join and resolve a round', async (t) => {
   const bravoGuess = result.guesses.find((guess) => guess.playerId === 'player_bravo_123456');
   assert.equal(alphaGuess.roundPoints, 1000);
   assert.equal(alphaGuess.scoreAfter, 0);
-  assert.ok(bravoGuess.roundPoints <= 1);
+  assert.ok(bravoGuess.roundPoints > 0);
+  assert.equal(bravoGuess.appliedPoints, 0);
   assert.equal(bravoGuess.scoreAfter, 1000);
 
   const gameOver = await gameOverA;

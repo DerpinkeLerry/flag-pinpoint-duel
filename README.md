@@ -15,7 +15,7 @@ Danach: `http://localhost:3000`
 
 - **Solo** – klassisches 5000→0-Spiel mit frei wählbaren Regeln.
 - **Daily Challenge** – jeden UTC-Tag dieselben 10 Länder für alle, feste faire Regeln, Tagesrangliste.
-- **1-vs-1 Classic** – beide bauen ihre eigenen Restpunkte Richtung 0 ab.
+- **1-vs-1 Classic** – pro Runde baut nur der nähere Spieler seine Restpunkte Richtung 0 ab; der weiter entfernte verliert keine Punkte.
 - **Distance Duel** – nur der nähere Spieler erhält in der Runde Punkteabbau.
 - **Best of 3/5/7/9** – Rundensiege statt Health-Race.
 - **Sudden Death** – der erste eindeutig bessere Guess entscheidet das Match.
